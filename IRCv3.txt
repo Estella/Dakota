@@ -1,0 +1,20 @@
+TIRC - The trivial internet relayable chat protocol
+
+The trivial internet relay chat protocol is an attempt to make internet relay chat
+easier to implement.
+
+The basic 001-9 numerics will be kept...
+however some replies are changed.
+
+So say you just registered.
+You now receive, for example (this will be the replies of tircd1):
+server.a: 001 <nick> Welcome to the Trivial Internet Relay Network
+server.a: 002 <nick> I am server.a, and I think you are <nick>!<username>@<hostname>.
+server.a: 003 <nick> server.a Tircd1.0 BITMASK:fffff PRIVMASK:fffff
+server.a: 004 <nick> ROOMTYPES:!@# STATI:~&*@%!+,7ffff,0ffff,07fff,00fff,007ff,000ff,0000f
+server.a: 005 <nick> I know you by the number 00AAAAAAA :00AAAAAAA
+server.a: ERR <nick> NOMOTD I do not have a Message of the Day.
+----- OR -----
+server.a: MOTD Hi! This is Trivial IRC, a completely incompatible IRC protocol.
+
+server.a: MODE <UID>
