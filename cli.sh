@@ -2,10 +2,10 @@
 # zsh irc client framework
 autoload -U colors && colors
 for COLOR in RED GREEN YELLOW BLUE MAGENTA CYAN BLACK WHITE; do
-    eval $COLOR='%{$fg_no_bold[${(L)COLOR}]%}'
-    eval BOLD_$COLOR='%{$fg_bold[${(L)COLOR}]%}'
+    eval $COLOR='$fg_no_bold[${(L)COLOR}]'
+    eval BOLD_$COLOR='$fg_bold[${(L)COLOR}]'
 done
-eval RESET='%{$reset_color%}'
+eval RESET='$reset_color'
 zmodload zsh/net/tcp
 ztcp -d 4 "$1" "$2"
 
@@ -24,6 +24,8 @@ connie(){
 #      onInvite
 #      onMode
 # TBI: onModeStripped
+
+nick="$3"
 
 privmsg(){
 	targ="$1"
@@ -71,26 +73,26 @@ echo "NICK $3" >&4
 
 onRaw(){
 	if test "$srcnick" = "$srchost" ; then
-		print -P -- "$BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE$4$BOLD_BLACK)-$WHITE RAW: $5"
+		echo "${BOLD_BLACK}-${BOLD_BLUE}$1${BOLD_BLACK}($BLUE$4$BOLD_BLACK)-$WHITE RAW: $5"
 	else
-		print -P -- "$BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE RAW: $4 $5"
+		echo "${BOLD_BLACK}-${BOLD_BLUE}$1${BOLD_BLACK}($BLUE${2}@${3}$BOLD_BLACK)-$WHITE RAW: $4 $5"
 	fi
 }
 
 onPrivmsg(){
 	if grep -i "^ACTION" <<<"$5" >/dev/null ; then
 		action="$(perl -p -e 's/^.ACTION //g' <<<$5)"
-		print -P -- "$BOLD_BLACK<$WHITE$4$BOLD_BLACK> ${BOLD_WHITE}* $1$WHITE $action"
+		echo "$BOLD_BLACK<$WHITE$4$BOLD_BLACK> ${BOLD_WHITE}* $1$WHITE $action"
 	elif grep -i "^VERSION" <<<"$5" >/dev/null ; then
-		print -P -- "<$CYAN$4/$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)>$WHITE CTCP$BOLD_WHITE VERSION$WHITE"
-		notice "$4" "VERSION zIRCc 0.1 (c) j4jackj & The Dakota Project"
+		echo "<$CYAN$4/$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)>$WHITE CTCP$BOLD_WHITE VERSION$WHITE"
+		notice "$1" "VERSION zIRCc 0.1 (c) j4jackj & The Dakota Project"
 	else
-		print -P -- "<$CYAN$4/$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)>$WHITE $5"
+		echo "<$CYAN$4/$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)>$WHITE $5"
 	fi
 }
 
 onNotice(){
-	print -P -- "$BOLD_BLACK-$BOLD_MAGENTA$4/$1$BOLD_BLACK($MAGENTA${2}@${3}$BOLD_BLACK)-$WHITE $5"
+	echo "$BOLD_BLACK-$BOLD_MAGENTA$4/$1$BOLD_BLACK($MAGENTA${2}@${3}$BOLD_BLACK)-$WHITE $5"
 }
 
 onKick(){
@@ -98,30 +100,45 @@ onKick(){
 }
 
 onPart(){
-	print -P -- "$BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE I am leaving $4 ($5)"
+	echo "$BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE I am leaving $4 ($5)"
 }
 
 onInvite(){
-	print -P -- "$BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE Invite: $4"
+	echo "$BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE Invite: $4"
 }
 
 onMode(){
-	print -P -- "$BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE I changed modes: $4"
+	echo "$BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE I changed modes: $4"
 }
 
 onMotd(){
-	print -P -- "$BOLD_BLACK-$BOLD_BLUE$1(${BLUE}Message of the Day$BOLD_BLACK)-$WHITE $2"
+	echo "$BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK(${BLUE}Message of the Day$BOLD_BLACK)-$WHITE $2"
 }
 
 onConnected(){
-	print -P -- "$BOLD_BLACK-$BOLD_BLUE$1(${BLUE}Message of the Day$BOLD_BLACK)-$WHITE You are now connected to IRC."
+	putserv "WHO $nick"
+	echo "$BOLD_BLACK-$BOLD_BLUE$1${BOLD_BLACK}-$WHITE You are now connected to IRC."
 }
 
 onJoin(){
-	print -P -- "$BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE I am joining $4."
+	echo "$BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE I am joining $4."
 }
-( while read source com arg ; do
-	msg="$source $com $arg"
+
+onWho(){
+	# Example $2: j4jackj2 * ~j4jackj2 kossy.doesn.t.know.how.to.use.inspircd * j4jackj2 Hr@ :0 HI!
+	parsed="$(cut -d' ' -f1,3,4,6<<<$2)"
+	nickuser="$(cut -d' ' -f3<<<$2)"
+	nickhost="$(cut -d' ' -f4<<<$2)"
+	if test "$(cut -d' ' -f1<<<$2)" = "$(cut -d' ' -f6<<<$2)" ; then
+		echo "${nickuser}@${nickhost}" > ./hostfile
+		user="$nickuser"
+		host="$nickhost"
+	fi
+}
+
+while read source com arg ; do
+	mesg="$source $com $arg"
+	msg="$(sed -e 's/%/%%/g' <<<$mesg | perl -p -e 's/\r//g')"
 	test "$source" = "PING" && echo "PONG $com $arg" >&4
 	test "$com" = "PING" && echo "PONG $arg" >&4
 	args="$(perl -p -e 's/^(?:[:](\S+) )?(\S+)(?: (?!:)(.+?))?(?: [:](.+))?$/$3/g' <<<$msg | sed -e 's/^ //g' -e 's/ $//g')"
@@ -138,24 +155,32 @@ onJoin(){
 	elif grep -i "PART" <<<"$com" >/dev/null ; then
 		onPart "$srcnick" "$srcuser" "$srchost" "$args" "$lastarg"
 	elif grep -i "JOIN" <<<"$com" >/dev/null ; then
-		onJoin "$srcnick" "$srcuser" "$srchost" "$args"
+		onJoin "$srcnick" "$srcuser" "$srchost" "$arg"
 	elif grep -i "INVITE" <<<"$com" >/dev/null ; then
 		onInvite "$srcnick" "$srcuser" "$srchost" "$args"
 	elif grep -i "MODE" <<<"$com" >/dev/null ; then
 		onMode "$srcnick" "$srcuser" "$srchost" "$arg"
+	elif grep -i "PING" <<<"$source" >/dev/null ; then
+		true
+	elif grep -i "PONG" <<<"$source" >/dev/null ; then
+		true
 	elif grep -i "375" <<<"$com" >/dev/null ; then
 		onMotd "$srcnick" "$lastarg"
 	elif grep -i "376" <<<"$com" >/dev/null ; then
 		onConnected "$srcnick"
+	elif grep -i "352" <<<"$com" >/dev/null ; then
+		onWho "$srcnick" "$arg"
 	elif grep -i "372" <<<"$com" >/dev/null ; then
 		onMotd "$srcnick" "$lastarg"
 	else
 		grep -i '^NOTICE AUTH' <<<"$msg" >/dev/null && onNotice "Server" "" "" "AUTH" "$lastarg" || onRaw "$srcnick" "$srcuser" "$srchost" "$com" "$arg"
 	fi
-done <&4 ) &
+done <&4 &
 
 while read com argv1 argv2 args ; do
 	if grep -i ":m" <<<"$com" >/dev/null ; then
+		read user host < hostfile
+		onPrivmsg "$nick" "$user" "$host" "$argv1" "$argv2 $args"
 		privmsg "$argv1" "$argv2 $args"
 	elif grep -i ":n" <<<"$com" >/dev/null ; then
 		notice "$argv1" "$argv2 $args"
@@ -173,6 +198,9 @@ while read com argv1 argv2 args ; do
 		privmsg "$argv1" "ACTION $argv2 $args"
 	elif grep -i ":put" <<<"$com" >/dev/null; then
 		putserv "$argv1 $argv2 $args"
+	elif grep -i ":nick" <<<"$com" >/dev/null; then
+		putserv "NICK $argv1 $argv2 $args"
+		nick="$argv1"
 	elif grep -i ":q" <<<"$com" >/dev/null ; then
 		putserv "QUIT $argv1 $argv2 $args"
 		echo "CLOSING LINK: Quit"
@@ -181,5 +209,5 @@ while read com argv1 argv2 args ; do
 		echo Unrecognised command.
 	fi
 done
-
+rm hostfile
 exit

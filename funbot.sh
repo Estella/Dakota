@@ -1,5 +1,5 @@
 #!/usr/bin/env zsh
-nick="j4Bawtty"
+nick="BrellBot"
 realname="u"
 touch ~/joiners
 onPrivmsg(){
@@ -15,8 +15,14 @@ onPrivmsg(){
 		privmsg "$4" "u"
 	elif grep -i "fuck you" <<<"$5" ; then
 		privmsg "$4" "$1: Fuck you too, twatface!"
-	elif grep -i "hi" <<<"$5" ; then
+	elif grep -i "^hi" <<<"$5" ; then
 		privmsg "$4" "Hello to you too, $1. How may I help you?"
+	elif grep -i "^!brell" <<<"$5" ; then
+		privmsg "$4" "$1, j4jackj's IRC server is irc.umbrellix.tk, and the best channel is #asterirc"
+	elif grep -i "^!server" <<<"$5" ; then
+		privmsg "$4" "$1, j4jackj's IRC server is irc.umbrellix.tk, and the best channel is #asterirc"
+	elif grep -i "eminet" <<<"$5" | grep -i "awesome" ; then
+		privmsg "$4" "$1, EmiNET sucks. j4jackj's IRC server is irc.umbrellix.tk, and the best channel is #asterirc"
 	fi
 }
 
