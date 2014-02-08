@@ -72,8 +72,9 @@ echo "USER $3 8 * :$4" >&4
 echo "NICK $3" >&4
 
 onRaw(){
+	recv="$(perl -p -e 's/^:(\S+) (\S+) (\S+) (.+)$/$4/g' <<<$msg | sed -e 's/^://g')"
 	if test "$srcnick" = "$srchost" ; then
-		echo "$timestamp ${BOLD_BLACK}-${BOLD_BLUE}$1${BOLD_BLACK}($BLUE$4$BOLD_BLACK)-$WHITE RAW: $5"
+		echo "$timestamp $RED!$1:$4$WHITE $recv"
 	else
 		echo "$timestamp ${BOLD_BLACK}-${BOLD_BLUE}$1${BOLD_BLACK}($BLUE${2}@${3}$BOLD_BLACK)-$WHITE RAW: $4 $5"
 	fi
@@ -95,11 +96,14 @@ onPrivmsg(){
 }
 
 onNotice(){
-	echo "$timestamp $BOLD_BLACK-$BOLD_MAGENTA$4/$1$BOLD_BLACK($MAGENTA${2}@${3}$BOLD_BLACK)-$WHITE $5"
+	if [ "$1" = "$2" ] && grep '\.' <<<"$2" >/dev/null ; then
+		echo "$timestamp ${GREEN}!$1$WHITE $5"
+	else echo "$timestamp $BOLD_BLACK-$BOLD_MAGENTA$1$BOLD_BLACK($MAGENTA${2}@${3}$BOLD_BLACK)-$WHITE $5"
+	fi
 }
 
 onKick(){
-	echo "Kick: $1 $2 $3 $4 $5"
+	echo "$timestamp Kick: $1 $2 $3 $4 $5"
 }
 
 onPart(){
@@ -111,11 +115,27 @@ onInvite(){
 }
 
 onMode(){
-	echo "$timestamp $BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE I changed modes: $4"
+	modetarg="$(perl -p -e 's/^(\S+) (\S+) (\S+) (.*)$/\3/g' <<<$msg)"
+	modechg="$(perl -p -e 's/^(\S+) (\S+) (\S+) (.+)$/\4/g' <<<$msg | sed -e 's/^://g')"
+	modecmd="$(perl -p -e 's/^(\S+) (\S+) (\S+) (.+)$/\2/g' <<<$msg)"
+	[ "$modecmd" = "MODE" ] && echo "$timestamp mode/$CYAN$modetarg ${BOLD_BLACK}[${WHITE}$modechg${BOLD_BLACK}]$WHITE by ${BOLD_WHITE}$srcnick${WHITE}"
+	[ "$modecmd" = "324" ] && (
+		modetarg="$(perl -p -e 's/^(\S+) (\S+) (\S+) (\S+) (.*)$/\4/g' <<<$msg)"
+		modechg="$(perl -p -e 's/^(\S+) (\S+) (\S+) (\S+) (.+)$/\5/g' <<<$msg | sed -e 's/^://g')"
+		echo "$timestamp ${BOLD_BLUE}-${WHITE}!${BOLD_BLUE}-${WHITE} Current mode of $BOLD_WHITE$modetarg$WHITE is $modechg"
+	)
+}
+
+onCreationDate(){
+        tim="$(perl -p -e 's/^(\S+) (\S+) (\S+) (\S+) (.*)$/\5/g' <<<$msg)"
+	date=$(date --date "@$tim")
+        chan="$(perl -p -e 's/^(\S+) (\S+) (\S+) (\S+) (.+)$/\4/g' <<<$msg)"
+	echo "$timestamp ${BOLD_BLUE}-${WHITE}!${BOLD_BLUE}-${WHITE} Channel $CYAN$chan$WHITE was created $date"
+	echo "$timestamp ${BOLD_BLUE}-${WHITE}!${BOLD_BLUE}-${WHITE} Channel Timestamp is used in server to server transactions to prevent channel hacking."
 }
 
 onMotd(){
-	echo "$timestamp $BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK(${BLUE}Message of the Day$BOLD_BLACK)-$WHITE $2"
+	echo "$timestamp $BOLD_RED!$1!$WHITE $2"
 }
 
 onConnected(){
@@ -148,7 +168,7 @@ while read -r mesg ; do
 	test "$source" = "PING" && echo "PONG $com $arg" >&4
 	test "$com" = "PING" && echo "PONG $arg" >&4
 	args="$(perl -p -e 's/^(?:[:](\S+) )?(\S+)(?: (?!:)(.+?))?(?: [:](.+))?$/$3/g' <<<$msg | sed -e 's/^ //g' -e 's/ $//g')"
-	lastarg="$(perl -p -e 's/^(?:[:](\S+) )?(\S+)(?: (?!:)(.+?))?(?: [:](.+))?$/$4/g' <<<$msg)"
+	lastarg="$(perl -p -e 's/^:(\S+) (\S+) (\S+) :(.+)$/$4/g' <<<$msg)"
 	srcnick="$(perl -p -e 's/^(?:[:](\S+) )?(\S+)(?: (?!:)(.+?))?(?: [:](.+))?$/$1/g' <<<$msg | perl -p -e 's/^(.*)!(.*)@(.*)$/$1/g')"
 	srcuser="$(perl -p -e 's/^(?:[:](\S+) )?(\S+)(?: (?!:)(.+?))?(?: [:](.+))?$/$1/g' <<<$msg | perl -p -e 's/^(.*)!(.*)@(.*)$/$2/g')"
 	srchost="$(perl -p -e 's/^(?:[:](\S+) )?(\S+)(?: (?!:)(.+?))?(?: [:](.+))?$/$1/g' <<<$msg | perl -p -e 's/^(.*)!(.*)@(.*)$/$3/g')"
@@ -165,7 +185,11 @@ while read -r mesg ; do
 	elif grep -i "INVITE" <<<"$com" >/dev/null ; then
 		onInvite "$srcnick" "$srcuser" "$srchost" "$args"
 	elif grep -i "MODE" <<<"$com" >/dev/null ; then
-		onMode "$srcnick" "$srcuser" "$srchost" "$arg"
+		onMode "$srcnick" "$srcuser" "$srchost" "$msg"
+	elif grep -i "324" <<<"$com" >/dev/null ; then
+		onMode "$srcnick" "$srcuser" "$srchost" "$msg"
+	elif grep -i "329" <<<"$com" >/dev/null ; then
+		onCreationDate "$srcnick"
 	elif grep -i "^PING" <<<"$msg" >/dev/null ; then
 		true
 	elif grep -i "^PONG" <<<"$msg" >/dev/null ; then
@@ -183,7 +207,7 @@ while read -r mesg ; do
 	fi
 done <&4 &
 
-while read com argv1 argv2 args ; do
+while read -r com argv1 argv2 args ; do
 	timestamp=$(date "+${BOLD_BLACK}%d %m %Y ${WHITE}%H${BOLD_BLACK}:${WHITE}%M")
 	if grep -i "^:m$" <<<"$com" >/dev/null ; then
 		read user host < hostfile
@@ -201,6 +225,7 @@ while read com argv1 argv2 args ; do
 		part "$argv1" "I'm gone... $argv2 $args"
 	elif grep -i ":j" <<<"$com" >/dev/null ; then
 		join "$argv1" "$argv2"
+		putserv "MODE $argv1"
 	elif grep -i ":inv" <<<"$com" >/dev/null ; then
 		putserv "INVITE $argv1 $argv2"
 	elif grep -i ":flag" <<<"$com" >/dev/null ; then
@@ -209,6 +234,10 @@ while read com argv1 argv2 args ; do
 		read user host < hostfile
 		onPrivmsg "$nick" "$user" "$host" "$argv1" "ACTION $argv2 $args"
 		privmsg "$argv1" "ACTION $argv2 $args"
+	elif grep -i ":me$" <<<"$com" >/dev/null ; then
+		read user host < hostfile
+		onPrivmsg "$nick" "$user" "$host" "$activetarg" "ACTION $argv1 $argv2 $args"
+		privmsg "$activetarg" "ACTION $argv1 $argv2 $args"
 	elif grep -i ":meis" <<<"$com" >/dev/null ; then
 		read user host < hostfile
 		onPrivmsg "$nick" "$user" "$host" "$argv1" "MEIS $argv2 $args"
@@ -220,12 +249,18 @@ while read com argv1 argv2 args ; do
 	elif grep -i ":nick" <<<"$com" >/dev/null; then
 		putserv "NICK $argv1 $argv2 $args"
 		nick="$argv1"
+	elif grep -i ":active" <<<"$com" >/dev/null; then
+		echo "$timestamp" "${BOLD_BLUE}-${WHITE}!${BOLD_BLUE}-${WHITE}" "I have set the active target to $argv1"
+		activetarg="$argv1"
 	elif grep -i ":q" <<<"$com" >/dev/null ; then
 		putserv "QUIT $argv1 $argv2 $args"
 		echo "CLOSING LINK: Quit"
 		sleep 5 ; exit
 	else
-		echo "$timestamp" Huh\?
+		read user host < hostfile
+		test -n "$activetarg" && ( privmsg "$activetarg" "$com $argv1 $argv2 $args"
+		onPrivmsg "$nick" "$user" "$host" "$activetarg" "$com $argv1 $argv2 $args"
+		)|| echo "$timestamp" "${BOLD_BLUE}-${WHITE}!${BOLD_BLUE}-${WHITE}" Huh\? WTF are you on about\? Tell me in words I\'ll understand.
 	fi
 done
 rm hostfile
