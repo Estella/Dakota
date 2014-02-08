@@ -8,7 +8,7 @@ done
 eval RESET='$reset_color'
 zmodload zsh/net/tcp
 ztcp -d 4 "$1" "$2"
-
+touch ./hostfile
 connie(){
 	sleep 20
 	onConnected
@@ -73,26 +73,29 @@ echo "NICK $3" >&4
 
 onRaw(){
 	if test "$srcnick" = "$srchost" ; then
-		echo "${BOLD_BLACK}-${BOLD_BLUE}$1${BOLD_BLACK}($BLUE$4$BOLD_BLACK)-$WHITE RAW: $5"
+		echo "$timestamp ${BOLD_BLACK}-${BOLD_BLUE}$1${BOLD_BLACK}($BLUE$4$BOLD_BLACK)-$WHITE RAW: $5"
 	else
-		echo "${BOLD_BLACK}-${BOLD_BLUE}$1${BOLD_BLACK}($BLUE${2}@${3}$BOLD_BLACK)-$WHITE RAW: $4 $5"
+		echo "$timestamp ${BOLD_BLACK}-${BOLD_BLUE}$1${BOLD_BLACK}($BLUE${2}@${3}$BOLD_BLACK)-$WHITE RAW: $4 $5"
 	fi
 }
 
 onPrivmsg(){
 	if grep -i "^ACTION" <<<"$5" >/dev/null ; then
 		action="$(perl -p -e 's/^.ACTION //g' <<<$5)"
-		echo "$BOLD_BLACK<$WHITE$4$BOLD_BLACK> ${BOLD_WHITE}* $1$WHITE $action"
+		echo "$timestamp $BOLD_BLACK<$WHITE$4$BOLD_BLACK> ${BOLD_WHITE}* $1$WHITE $action"
+	elif grep -i "^MEIS" <<<"$5" >/dev/null ; then
+		action="$(perl -p -e 's/^.MEIS //g' <<<$5)"
+		echo "$timestamp $BOLD_BLACK<$WHITE$4$BOLD_BLACK> ${BOLD_WHITE}* $1's$WHITE $action"
 	elif grep -i "^VERSION" <<<"$5" >/dev/null ; then
-		echo "<$CYAN$4/$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)>$WHITE CTCP$BOLD_WHITE VERSION$WHITE"
+		echo "$timestamp $BOLD_BLACK<$CYAN$4/$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)>$WHITE CTCP$BOLD_WHITE VERSION$WHITE"
 		notice "$1" "VERSION zIRCc 0.1 (c) j4jackj & The Dakota Project"
 	else
-		echo "<$CYAN$4/$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)>$WHITE $5"
+		echo "$timestamp $BOLD_BLACK<$WHITE$1:$BOLD_BLUE$4$BOLD_BLACK>$WHITE $5"
 	fi
 }
 
 onNotice(){
-	echo "$BOLD_BLACK-$BOLD_MAGENTA$4/$1$BOLD_BLACK($MAGENTA${2}@${3}$BOLD_BLACK)-$WHITE $5"
+	echo "$timestamp $BOLD_BLACK-$BOLD_MAGENTA$4/$1$BOLD_BLACK($MAGENTA${2}@${3}$BOLD_BLACK)-$WHITE $5"
 }
 
 onKick(){
@@ -100,28 +103,28 @@ onKick(){
 }
 
 onPart(){
-	echo "$BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE I am leaving $4 ($5)"
+	echo "$timestamp $BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE I am leaving $4 ($5)"
 }
 
 onInvite(){
-	echo "$BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE Invite: $4"
+	echo "$timestamp $BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE Invite: $4"
 }
 
 onMode(){
-	echo "$BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE I changed modes: $4"
+	echo "$timestamp $BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE I changed modes: $4"
 }
 
 onMotd(){
-	echo "$BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK(${BLUE}Message of the Day$BOLD_BLACK)-$WHITE $2"
+	echo "$timestamp $BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK(${BLUE}Message of the Day$BOLD_BLACK)-$WHITE $2"
 }
 
 onConnected(){
 	putserv "WHO $nick"
-	echo "$BOLD_BLACK-$BOLD_BLUE$1${BOLD_BLACK}-$WHITE You are now connected to IRC."
+	echo "$timestamp $BOLD_BLACK-$BOLD_BLUE$1${BOLD_BLACK}-$WHITE You are now connected to IRC."
 }
 
 onJoin(){
-	echo "$BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE I am joining $4."
+	echo "$timestamp $BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE I am joining $4."
 }
 
 onWho(){
@@ -130,15 +133,18 @@ onWho(){
 	nickuser="$(cut -d' ' -f3<<<$2)"
 	nickhost="$(cut -d' ' -f4<<<$2)"
 	if test "$(cut -d' ' -f1<<<$2)" = "$(cut -d' ' -f6<<<$2)" ; then
-		echo "${nickuser}@${nickhost}" > ./hostfile
+		echo "${nickuser} ${nickhost}" > ./hostfile
 		user="$nickuser"
 		host="$nickhost"
 	fi
 }
 
-while read source com arg ; do
-	mesg="$source $com $arg"
-	msg="$(sed -e 's/%/%%/g' <<<$mesg | perl -p -e 's/\r//g')"
+while read -r mesg ; do
+	timestamp=$(date "+${BOLD_BLACK}%d %m %Y ${WHITE}%H${BOLD_BLACK}:${WHITE}%M")
+	tr -d '' <<<"$mesg" | perl -p -e 's!\\!\\\\!g' | read msg
+	source="$(perl -p -e 's/^(?:[:](\S+) )?(\S+)(?: (?!:)(.+?))?(?: [:](.+))?$/$1/g' <<<$msg)"
+	com="$(perl -p -e 's/^(?:[:](\S+) )?(\S+)(?: (?!:)(.+?))?(?: [:](.+))?$/$2/g' <<<$msg)"
+	arg="$(perl -p -e 's/^(?:[:](\S+) )?(\S+) (\S+)$/$3/g' <<<$msg | sed -e 's/^ //g' -e 's/ $//g')"
 	test "$source" = "PING" && echo "PONG $com $arg" >&4
 	test "$com" = "PING" && echo "PONG $arg" >&4
 	args="$(perl -p -e 's/^(?:[:](\S+) )?(\S+)(?: (?!:)(.+?))?(?: [:](.+))?$/$3/g' <<<$msg | sed -e 's/^ //g' -e 's/ $//g')"
@@ -160,9 +166,9 @@ while read source com arg ; do
 		onInvite "$srcnick" "$srcuser" "$srchost" "$args"
 	elif grep -i "MODE" <<<"$com" >/dev/null ; then
 		onMode "$srcnick" "$srcuser" "$srchost" "$arg"
-	elif grep -i "PING" <<<"$source" >/dev/null ; then
+	elif grep -i "^PING" <<<"$msg" >/dev/null ; then
 		true
-	elif grep -i "PONG" <<<"$source" >/dev/null ; then
+	elif grep -i "^PONG" <<<"$msg" >/dev/null ; then
 		true
 	elif grep -i "375" <<<"$com" >/dev/null ; then
 		onMotd "$srcnick" "$lastarg"
@@ -178,11 +184,16 @@ while read source com arg ; do
 done <&4 &
 
 while read com argv1 argv2 args ; do
-	if grep -i ":m" <<<"$com" >/dev/null ; then
+	timestamp=$(date "+${BOLD_BLACK}%d %m %Y ${WHITE}%H${BOLD_BLACK}:${WHITE}%M")
+	if grep -i "^:m$" <<<"$com" >/dev/null ; then
 		read user host < hostfile
 		onPrivmsg "$nick" "$user" "$host" "$argv1" "$argv2 $args"
 		privmsg "$argv1" "$argv2 $args"
+	elif grep -i ":hm" <<<"$com" >/dev/null ; then
+		privmsg "$argv1" "$argv2 $args"
 	elif grep -i ":n" <<<"$com" >/dev/null ; then
+		read user host < hostfile
+		onNotice "$nick" "$user" "$host" "$argv1" "$argv2 $args"
 		notice "$argv1" "$argv2 $args"
 	elif grep -i ":k" <<<"$com" >/dev/null ; then
 		kick "$argv1" "$argv2" "Kicked: $args"
@@ -195,7 +206,15 @@ while read com argv1 argv2 args ; do
 	elif grep -i ":flag" <<<"$com" >/dev/null ; then
 		mode "$argv1 $argv2 $args"
 	elif grep -i ":dcb" <<<"$com" >/dev/null ; then
+		read user host < hostfile
+		onPrivmsg "$nick" "$user" "$host" "$argv1" "ACTION $argv2 $args"
 		privmsg "$argv1" "ACTION $argv2 $args"
+	elif grep -i ":meis" <<<"$com" >/dev/null ; then
+		read user host < hostfile
+		onPrivmsg "$nick" "$user" "$host" "$argv1" "MEIS $argv2 $args"
+		privmsg "$argv1" "MEIS $argv2 $args"
+	elif grep -i ":ctcp" <<<"$com" >/dev/null ; then
+		privmsg "$argv1" "$argv2 $args"
 	elif grep -i ":put" <<<"$com" >/dev/null; then
 		putserv "$argv1 $argv2 $args"
 	elif grep -i ":nick" <<<"$com" >/dev/null; then
@@ -206,7 +225,7 @@ while read com argv1 argv2 args ; do
 		echo "CLOSING LINK: Quit"
 		sleep 5 ; exit
 	else
-		echo Unrecognised command.
+		echo "$timestamp" Huh\?
 	fi
 done
 rm hostfile
