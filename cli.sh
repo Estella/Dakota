@@ -144,7 +144,15 @@ onConnected(){
 }
 
 onJoin(){
-	echo "$timestamp $BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE I am joining $4."
+	echo "$timestamp $BOLD_CYAN$1 ${BOLD_BLACK}[$CYAN${2}@${3}${BOLD_BLACK}]$WHITE has joined $BOLD_WHITE$4$WHITE"
+}
+
+onPart(){
+	echo "$timestamp $CYAN$1 ${BOLD_BLACK}[$WHITE${2}@${3}${BOLD_BLACK}]$WHITE has left $BOLD_WHITE$4$WHITE ${BOLD_BLACK}[$WHITE${5}]$WHITE"
+}
+
+onQuit(){
+	echo "$timestamp $CYAN$1 ${BOLD_BLACK}[$WHITE${2}@${3}${BOLD_BLACK}]$WHITE has quit ${BOLD_BLACK}[$WHITE${5}]$WHITE"
 }
 
 onWho(){
@@ -167,7 +175,7 @@ while read -r mesg ; do
 	arg="$(perl -p -e 's/^(?:[:](\S+) )?(\S+) (\S+)$/$3/g' <<<$msg | sed -e 's/^ //g' -e 's/ $//g')"
 	test "$source" = "PING" && echo "PONG $com $arg" >&4
 	test "$com" = "PING" && echo "PONG $arg" >&4
-	args="$(perl -p -e 's/^(?:[:](\S+) )?(\S+)(?: (?!:)(.+?))?(?: [:](.+))?$/$3/g' <<<$msg | sed -e 's/^ //g' -e 's/ $//g')"
+	args="$(perl -p -e 's/^(?:[:](\S+) )?(\S+)(?: (?!:)(.+?))?(?: [:](.+))?$/$3/g' <<<$msg | sed -e 's/^://g' -e 's/:$//g' -e 's/^ //g' -e 's/ $//g')"
 	lastarg="$(perl -p -e 's/^:(\S+) (\S+) (\S+) :(.+)$/$4/g' <<<$msg)"
 	srcnick="$(perl -p -e 's/^(?:[:](\S+) )?(\S+)(?: (?!:)(.+?))?(?: [:](.+))?$/$1/g' <<<$msg | perl -p -e 's/^(.*)!(.*)@(.*)$/$1/g')"
 	srcuser="$(perl -p -e 's/^(?:[:](\S+) )?(\S+)(?: (?!:)(.+?))?(?: [:](.+))?$/$1/g' <<<$msg | perl -p -e 's/^(.*)!(.*)@(.*)$/$2/g')"
@@ -180,6 +188,8 @@ while read -r mesg ; do
 		onKick "$srcnick" "$srcuser" "$srchost" "$args" "$lastarg"
 	elif grep -i "PART" <<<"$com" >/dev/null ; then
 		onPart "$srcnick" "$srcuser" "$srchost" "$args" "$lastarg"
+	elif grep -i "QUIT" <<<"$com" >/dev/null ; then
+		onPart "$srcnick" "$srcuser" "$srchost" "$args" "$lastarg"
 	elif grep -i "JOIN" <<<"$com" >/dev/null ; then
 		onJoin "$srcnick" "$srcuser" "$srchost" "$arg"
 	elif grep -i "INVITE" <<<"$com" >/dev/null ; then
@@ -191,7 +201,7 @@ while read -r mesg ; do
 	elif grep -i "329" <<<"$com" >/dev/null ; then
 		onCreationDate "$srcnick"
 	elif grep -i "^PING" <<<"$msg" >/dev/null ; then
-		true
+		echo 'PING :hi' >&4
 	elif grep -i "^PONG" <<<"$msg" >/dev/null ; then
 		true
 	elif grep -i "375" <<<"$com" >/dev/null ; then
