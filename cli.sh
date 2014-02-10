@@ -111,14 +111,15 @@ onPart(){
 }
 
 onInvite(){
-	echo "$timestamp $BOLD_BLACK-$BOLD_BLUE$1$BOLD_BLACK($BLUE${2}@${3}$BOLD_BLACK)-$WHITE Invite: $4"
+	modetarg="$(perl -p -e 's/^(\S+) (\S+) (\S+) :(.*)$/\4/g' <<<$msg)"
+	echo "$timestamp ${BOLD_BLUE}-${WHITE}!${BOLD_BLUE}-${WHITE} You are cordially invited to $CYAN$modetarg$WHITE by ${BOLD_WHITE}$srcnick${WHITE} ${BOLD_BLACK}[$CYAN${2}@${3}${BOLD_BLACK}]$WHITE"
 }
 
 onMode(){
 	modetarg="$(perl -p -e 's/^(\S+) (\S+) (\S+) (.*)$/\3/g' <<<$msg)"
 	modechg="$(perl -p -e 's/^(\S+) (\S+) (\S+) (.+)$/\4/g' <<<$msg | sed -e 's/^://g')"
 	modecmd="$(perl -p -e 's/^(\S+) (\S+) (\S+) (.+)$/\2/g' <<<$msg)"
-	[ "$modecmd" = "MODE" ] && echo "$timestamp mode/$CYAN$modetarg ${BOLD_BLACK}[${WHITE}$modechg${BOLD_BLACK}]$WHITE by ${BOLD_WHITE}$srcnick${WHITE}"
+	[ "$modecmd" = "MODE" ] && echo "$timestamp ${BOLD_BLUE}-${WHITE}!${BOLD_BLUE}-${WHITE} mode/$CYAN$modetarg ${BOLD_BLACK}[${WHITE}$modechg${BOLD_BLACK}]$WHITE by ${BOLD_WHITE}$srcnick${WHITE}"
 	[ "$modecmd" = "324" ] && (
 		modetarg="$(perl -p -e 's/^(\S+) (\S+) (\S+) (\S+) (.*)$/\4/g' <<<$msg)"
 		modechg="$(perl -p -e 's/^(\S+) (\S+) (\S+) (\S+) (.+)$/\5/g' <<<$msg | sed -e 's/^://g')"
@@ -144,15 +145,22 @@ onConnected(){
 }
 
 onJoin(){
-	echo "$timestamp $BOLD_CYAN$1 ${BOLD_BLACK}[$CYAN${2}@${3}${BOLD_BLACK}]$WHITE has joined $BOLD_WHITE$4$WHITE"
+	echo "$timestamp ${BOLD_BLUE}-${WHITE}!${BOLD_BLUE}-${WHITE} $BOLD_CYAN$1 ${BOLD_BLACK}[$CYAN${2}@${3}${BOLD_BLACK}]$WHITE has joined $BOLD_WHITE$4$WHITE"
 }
 
 onPart(){
-	echo "$timestamp $CYAN$1 ${BOLD_BLACK}[$WHITE${2}@${3}${BOLD_BLACK}]$WHITE has left $BOLD_WHITE$4$WHITE ${BOLD_BLACK}[$WHITE${5}]$WHITE"
+	lastarg="$(perl -p -e 's/^:(\S+) (\S+) (\S+) :(.+)$/$4/g' <<<$msg)"
+	echo "$timestamp ${BOLD_BLUE}-${WHITE}!${BOLD_BLUE}-${WHITE} $CYAN$1 ${BOLD_BLACK}[$WHITE${2}@${3}${BOLD_BLACK}]$WHITE has left $BOLD_WHITE$4$WHITE ${BOLD_BLACK}[$WHITE${lastarg}$BOLD_BLACK]$WHITE"
 }
 
 onQuit(){
-	echo "$timestamp $CYAN$1 ${BOLD_BLACK}[$WHITE${2}@${3}${BOLD_BLACK}]$WHITE has quit ${BOLD_BLACK}[$WHITE${5}]$WHITE"
+	quitmsg="$(perl -p -e 's/^:(\S+) (\S+) :(.*)$/$3/g' <<<$msg)"
+	echo "$timestamp ${BOLD_BLUE}-${WHITE}!${BOLD_BLUE}-${WHITE} $CYAN$1 ${BOLD_BLACK}[$WHITE${2}@${3}${BOLD_BLACK}]$WHITE has quit ${BOLD_BLACK}[$WHITE${quitmsg}$BOLD_BLACK]$WHITE"
+}
+
+onNick(){
+	quitmsg="$(perl -p -e 's/^:(\S+) (\S+) :(.+)$/$3/g' <<<$msg)"
+	echo "$timestamp ${BOLD_BLUE}-${WHITE}!${BOLD_BLUE}-${WHITE} $CYAN$1$WHITE is now known as $BOLD_CYAN${quitmsg}$WHITE"
 }
 
 onWho(){
@@ -189,7 +197,9 @@ while read -r mesg ; do
 	elif grep -i "PART" <<<"$com" >/dev/null ; then
 		onPart "$srcnick" "$srcuser" "$srchost" "$args" "$lastarg"
 	elif grep -i "QUIT" <<<"$com" >/dev/null ; then
-		onPart "$srcnick" "$srcuser" "$srchost" "$args" "$lastarg"
+		onQuit "$srcnick" "$srcuser" "$srchost"
+	elif grep -i "NICK" <<<"$com" >/dev/null ; then
+		onNick "$srcnick" "$srcuser" "$srchost"
 	elif grep -i "JOIN" <<<"$com" >/dev/null ; then
 		onJoin "$srcnick" "$srcuser" "$srchost" "$arg"
 	elif grep -i "INVITE" <<<"$com" >/dev/null ; then
@@ -263,7 +273,7 @@ while read -r com argv1 argv2 args ; do
 		echo "$timestamp" "${BOLD_BLUE}-${WHITE}!${BOLD_BLUE}-${WHITE}" "I have set the active target to $argv1"
 		activetarg="$argv1"
 	elif grep -i ":q" <<<"$com" >/dev/null ; then
-		putserv "QUIT $argv1 $argv2 $args"
+		putserv "QUIT :$argv1 $argv2 $args"
 		echo "CLOSING LINK: Quit"
 		sleep 5 ; exit
 	else
