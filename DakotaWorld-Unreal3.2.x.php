@@ -120,7 +120,6 @@ function b64e($id, $alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx
 			$buf = sprintf(":%s AL %s %s",$this->s['BotNick'][2], $Numeric, $Vhost);
 			$this->SendRaw($buf,1);
 		}
-		$buf = sprintf("%s DS :account sent. %s",$this->ServiceNum,$Acct);
 		$this->SendRaw($buf,1);
 		pg_close($database);
 	}
@@ -178,18 +177,18 @@ EOF;
 		$this->s['BotNick'][1] = "X";
 		$this->s['BotUser'][1] = "X";
 		$this->s['BotHost'][1] = "cservice.umbrellix.tk";
-		$this->s['BotModes'][1] = "+oidkr L";
+		$this->s['BotModes'][1] = "+oiS";
 		$this->s['Desc'][1] = "Try these: /msg X help register and /msg X help chanregister";
 
 		$this->s['BotNick'][2] = "H";
 		$this->s['BotUser'][2] = "H";
 		$this->s['BotHost'][2] = "hostserv.umbrellix.tk";
-		$this->s['BotModes'][2] = "+oidkr HStar";
+		$this->s['BotModes'][2] = "+oiS";
 		$this->s['Desc'][2] = "BETA multiclient support for PHPStar";
 
-		$this->ServerName = "host.serv";
+		$this->ServerName = "services.";
 		$this->ServerHost = "127.0.0.1"; /* IP/Host to connect to */
-		$this->ServerPort = 4400; /* Port to connect to */
+		$this->ServerPort = 8667; /* Port to connect to */
 		$this->ServerPass = "link"; /* Password to use for the connection between the service and server */
 		$this->DeBug = FALSE; /* TRUE = on, FALSE = off */
 		/* TIP: If you put DeBug TRUE, and you are starting the script like this: ./fishbot.php &, then it's
@@ -216,7 +215,7 @@ EOF;
 		$rows = pg_num_rows($res);
 		$chans = pg_fetch_row($res);
 		for ($i = 1;$chans != FALSE;$i++) {
-			$tmp = sprintf(":%s ~ %s %s %sr :&%s &*!*ircap*@*",$this->ServerName,$chans[1],$chans[0],$chans[2],$this->s['BotNick'][1]);
+			$tmp = sprintf(":%s ~ %s %s %sr :~%s &*!*ircap*@*",$this->ServerName,$chans[1],$chans[0],$chans[2],$this->s['BotNick'][1]);
 			$this->SendRaw($tmp,1);
 			$tmp = sprintf(":%s ! %s :I am ChanServ, your channel service. :D",$this->s['BotNick'][1],$chans[0]);
 			$this->SendRaw($tmp,1);
@@ -326,17 +325,17 @@ function std_check_password($username, $password) {
 		$this->SendRaw($tmp,1);
 		$tmp = sprintf('SERVER %s 1 :%s',$this->ServerName,$this->ServiceDesc);
 		$this->SendRaw($tmp,1);
-		$tmp = sprintf('PROTOCTL :NICKv2 SJOIN SJOIN2 SJ3 ESVID');
+		$tmp = sprintf('PROTOCTL NICKv2 SJOIN SJOIN2 SJ3 ESVID TOKEN');
 		$this->SendRaw($tmp,1);
 		
 		for ($k = 1; $k <= $this->srvs; $k++) { //& nick hopcount timestamp	username hostname server servicestamp +usermodes virtualhost :realname
-			$tmp = sprintf('& %s 1 %s %s 127.0.0.1 %s Services +%s %s :%s',$this->s['BotNick'][$k],
+			$tmp = sprintf('& %s 1 %s %s 127.0.0.1 %s %s %s :%s',$this->s['BotNick'][$k],
 							$Time,$this->s['BotUser'][$k],$this->ServerName,$this->s['BotModes'][$k],$this->s['BotHost'][$k],$this->s['Desc'][$k]);
 			$this->SendRaw($tmp,1);
 		}
 		$tmp = sprintf(':%s ES',$this->ServerName);
 		$this->SendRaw($tmp,1);
-		$tmp = sprintf(':%s AO 0 %s 2307 * 0 0 0 :...',$this->ServerName,$Time);
+		$tmp = sprintf(':%s AO 0 %s 2311 * 0 0 0 :...',$this->ServerName,$Time);
 		$this->SendRaw($tmp,1);
 		$this->Counter =0;
 		
@@ -345,6 +344,8 @@ function std_check_password($username, $password) {
 			printf("Bot sended his own information to the server, waiting for respond.\n");
 			@ob_flush();
 		}
+		
+		$this->LoadChannels();
 		
 		$this->Idle();
 	}
@@ -355,38 +356,48 @@ function std_check_password($username, $password) {
 			$this->Get = fgets($this->Socket,384);
 			if (!empty($this->Get)) {
 				$Args = explode(" ",$this->Get);
+				printf("%s", $this->Get);@ob_flush();
 				$Cmd = trim($Args[1]);
-				$Dest = array_search($Args[2], $this->s['BotNick']);
+				$Dest = $this->s['BotNick'];
 				switch ($Cmd) {
+					case "PRIVMSG": /* They are talking to us */
 					case "!": /* They are talking to us */
 						$this->PrivMsg($Dest,$Args,$this->Get);
 						break;
+					case "MODE":
 					case "o":
 					case "G": /* A oper logged in, or a chanmode changed? */
 						$this->AddOper($Args);
 						printf("%s", $this->Get);@ob_flush();
 						break;
+					case "QUIT":
 					case ",": /* They quit as well, finally! :P */
 						$this->DelUser($Args);printf("%s", $this->Get);@ob_flush();
 						break;
+					case "SJOIN":
 					case "~": /* We received a burst line */
 						$this->Burst($Args);printf("%s", $this->Get);@ob_flush();
 						break;
+					case "JOIN":
 					case "C": /* Somebody joined a channel */
 						$this->AddChan($Args);
 						printf("%s", $this->Get);@ob_flush();
 						break;
+					case "PART":
 					case "D": /* If somebody parts a channel, we have to notice that */
 						$this->DelChan($Args);printf("%s", $this->Get);@ob_flush();
 						break;
+					case "NICK":
 					case "&": /* We got a nick-change or a nick-burst msg */
 						$this->SaveNicks($Args);printf("%s", $this->Get);@ob_flush();
 						break;
 				}
 				switch ($Args[0]) {
+					case "NICK":
 					case "&": /* We got a nick-change or a nick-burst msg */
 						$this->SaveNicks($Args);printf("%s", $this->Get);@ob_flush();
 						break;
+					case "PING":
 					case "8": /* Ping .. Pong :) */
 						$this->Pong($Args);printf("%s", $this->Get);@ob_flush();
 						break;
@@ -399,7 +410,7 @@ function std_check_password($username, $password) {
 		/* End of Burst received */
 		/* [get] AB EB */
 		if (empty($this->EB)) {
-			$tmp = sprintf('%s EA',$this->ServiceNum);
+			$tmp = sprintf(':%s ES',$this->ServerName);
 			$this->SendRaw($tmp,1);
 			$this->EB = TRUE;
 			$this->LoadChannels();
@@ -428,7 +439,7 @@ function std_check_password($username, $password) {
 			$this->SaveChannels();
 			$this->Counter=0; /* Putting it on zer0, for a new save/count */
 		}
-		$tmp = sprintf('%s Z %s',$this->ServiceNum,$Args[2]);
+		$tmp = sprintf('9 %s %s',$this->ServerName,$Args[1], $Args[2]);$tmp = sprintf('PONG %s %s',$this->ServerName,$Args[1],$Args[2]);
 		$this->SendRaw($tmp,0);
 		if ($this->DeBug) {
 			printf("Ping Pong?!\n");
@@ -503,13 +514,13 @@ function std_check_password($username, $password) {
 	
 	function OpUser($Bot,$Channel,$User,$Level){
 		if ($Level >= 50) {
-			$tmp = sprintf(":%s G %s +h %s %s", $this->s['BotNick'][$Bot], $Channel, $User, $this->Channels[$Parts[1]]["CH-TS"])
-		} elseif ($Level >= 100) {
-			$tmp = sprintf(":%s G %s +o %s %s", $this->s['BotNick'][$Dest], $Parts[1], $User, $this->Channels[$Parts[1]]["CH-TS"])
-		} elseif ($Level >= 200) {
-			$tmp = sprintf(":%s G %s +ao %s %s %s", $this->s['BotNick'][$Dest], $Parts[1], $User, $User, $this->Channels[$Parts[1]]["CH-TS"])
-		} elseif ($Level >= 350) {
-			$tmp = sprintf(":%s G %s +qo %s %s %s", $this->s['BotNick'][$Dest], $Parts[1], $User, $User, $this->Channels[$Parts[1]]["CH-TS"])
+			$tmp = sprintf(":%s G %s +h %s %s", $this->s['BotNick'][$Bot], $Channel, $User, $this->Channels[$Parts[1]]["CH-TS"]);
+		} if ($Level >= 100) {
+			$tmp = sprintf(":%s G %s +o %s %s", $this->s['BotNick'][$Bot], $Channel, $User, $this->Channels[$Parts[1]]["CH-TS"]);
+		} if ($Level >= 200) {
+			$tmp = sprintf(":%s G %s +ao %s %s %s", $this->s['BotNick'][$Bot], $Channel, $User, $User, $this->Channels[$Parts[1]]["CH-TS"]);
+		} if ($Level >= 350) {
+			$tmp = sprintf(":%s G %s +qo %s %s %s", $this->s['BotNick'][$Bot], $Channel, $User, $User, $this->Channels[$Parts[1]]["CH-TS"]);
 		}
 		$this->SendRaw($tmp,1);
 	}
@@ -519,138 +530,133 @@ function std_check_password($username, $password) {
 		/* [get] ABAAG P #blaat :Joh, wzp?	<-- Chan-msg
 		   [get] ABAAG P ADAAA :Joh, wzp?	<-- Priv-msg
 		*/
-		$Sender = trim($Args[0]);
+		$Sender = trim(substr($Args[0],1));
 		$Target = trim($Args[2]);
-		$Msg = explode(":",$Line,2);
-		$Msg = trim($Msg[1]);
+		$Msg = explode(":",$Line,3);
+		$Msg = trim($Msg[2]);
+		var_dump($Sender);		var_dump($Target);
 		if ($Target[0] == '#') { 
 			$Dest = 4096;
 			$Msg = explode("!",$Msg,2);
 			$Msg = $Msg[1];
 		} 
-		switch ($Dest) {
-			case 1:
+		switch ($Target) {
+			case "X":
 				$Parts = explode(" ",$Msg);
 				$Cmd = strtolower(trim($Parts[0]));
 				switch ($Cmd) {
 					case "login":
 						if (sizeof($Parts)<2) {
-							$this->SendRaw(sprintf(":%s B %s :Not enough parameters.", $this->s['BotNick'][$Dest], $Sender),1); break; }
+							$this->SendRaw(sprintf(":%s B %s :Not enough parameters.", $Target, $Sender),1); break; }
 						if ($this->std_check_password($Parts[1], $Parts[2])) {
 							$this->Acct[$Sender] = $Parts[1];
 							$this->AcctID[$Sender] = $this->idByUser($Parts[1]);
 							$this->SendRaw(sprintf(":%s n %s +d %s", $this->ServerName, $Sender, $Parts[1]),1);$this->Acct[$sender] = $Parts[1];
 							$this->vhostIt($Sender, $Parts[1]);
-							$this->SendRaw(sprintf(":%s B %s :Logged you in successfully as %s. Congratulations.", $this->s['BotNick'][$Dest], $Sender, $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s B %s :Logged you in successfully as %s. Congratulations.", $Target, $Sender, $Parts[1]),1);
 						} else {
-							$this->SendRaw(sprintf(":%s B %s :Go fuck yourself. Wrong login name or password for %s.", $this->s['BotNick'][$Dest], $Sender, $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s B %s :Go fuck yourself. Wrong login name or password for %s.", $Target, $Sender, $Parts[1]),1);
 						}
 						break;
 					case "chanregister":
-						if (!isset($this->Acct[$sender])) { $this->SendRaw(sprintf(":%s B %s :Please log in to me to continue.",$this->s['BotNick'][$Dest], $Sender)); break; }
+						if (!isset($this->Acct[$sender])) { $this->SendRaw(sprintf(":%s B %s :Please log in to me to continue.",$Target, $Sender)); break; }
 						if ($this->Channels[$Parts[1]][$Sender]["op"] or $this->Opers[$Numeric]) {
 							$chid = time();
-							$this->SendRaw(sprintf(":%s B %s :Registering %s to you or specified user.", $this->s['BotNick'][$Dest], $Sender, $Parts[1]),1);
-							
-							$this->SendRaw(sprintf("%s%s WC @%s :%s registered this channel.", $this->s['BotNick'][$Dest], $Parts[1], $this->Num2Nick($Sender)),1);
+							$this->SendRaw(sprintf(":%s B %s :Registering %s to you or specified user.", $Target, $Sender, $Parts[1]),1);
 							if (!isset($this->Channels[strtolower($Parts[1])]["CH-ID"])){
-								pg_query($this->c, sprintf("INSERT INTO channels (id, name, registered_ts, channel_ts, channel_mode, limit_offset, limit_period, limit_grace, limit_max, last_updated) VALUES (%s, '%s', %s, %s, '+tnCN', 5, 20, 1, 0, 313370083);",$chid, $Parts[1], $chid, $this->Channels[strtolower($Parts[1])]["CH-TS"], time()));
+								pg_query($this->c, sprintf("INSERT INTO channels (id, name, registered_ts, channel_ts, channel_mode, limit_offset, limit_period, limit_grace, limit_max, last_updated) VALUES (%s, '%s', %s, %s, '+tnCT', 5, 20, 1, 0, 313370083);",$chid, $Parts[1], $chid, $this->Channels[strtolower($Parts[1])]["CH-TS"], time()));
 								pg_query($this->c, sprintf("INSERT INTO levels (channel_id, user_id, access, added, last_updated) VALUES (%s, (select id from users where user_name = '%s'), %s, %s, 1933780085);",$chid, $this->Acct[$Sender], "500", time()));
-								$tmp = sprintf("%s B %s %s %sz %s%s:o",$this->ServiceNum,$chans[0],$chans[1],$chans[2],$this->ServiceNum,$this->b64e(1));
-								$this->SendRaw($tmp,1);	
-								$tmp = sprintf("%s%s P %s :I only joined to set registered channel modes.",$this->ServiceNum,$this->b64e(1),$chans[0]);
-								$this->SendRaw($tmp,1);	
-								$tmp = sprintf("%s%s L %s",$this->ServiceNum,$this->b64e(1),$chans[0]);
+								$tmp = sprintf(":%s ~ %s %s %sr :&%s &*!*ircap*@*",$this->ServerName,$chans[1],$chans[0],$chans[2],$this->s['BotNick'][1]);
+								$this->SendRaw($tmp,1);
+								$tmp = sprintf(":%s ! %s :I am ChanServ, your channel service. :D",$this->s['BotNick'][1],$chans[0]);
 								$this->SendRaw($tmp,1);
 							}
 						} else {
-							$this->SendRaw(sprintf(":%s B %s :Not registering %s to you because you are not currently opped on that channel.", $this->s['BotNick'][$Dest], $Sender, $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s B %s :Not registering %s to you because you are not currently opped on that channel.", $Target, $Sender, $Parts[1]),1);
 						}
 						break;
 					case "adduser":
 						if (!isset($this->Acct[$sender])) {
-								$this->SendRaw(sprintf(":%s B %s :Please log in to me to continue.",$this->s['BotNick'][$Dest], $Sender));
+								$this->SendRaw(sprintf(":%s B %s :Please log in to me to continue.",$Target, $Sender));
 								break;
 							}
-						if ($this->LoadChannelOps($Parts[1], $this->Acct[$Sender]) < 500) {
-							$this->SendRaw(sprintf(":%s B %s :Adding user as requested.", $this->s['BotNick'][$Dest], $Sender),1);
-							$this->SendRaw(sprintf("%s%s WC @%s :%s requested addition of %s at level %s", $this->s['BotNick'][$Dest], $Parts[1], $this->Num2Nick($Sender), $Parts[2], $Parts[3]),1);
+						if ($this->LoadChannelOps($Parts[1], $this->Acct[$Sender]) > 499) {
+							$this->SendRaw(sprintf(":%s B %s :Adding user as requested.", $Target, $Sender),1);
 								$id = $this->idByChan($Parts[1]);
 								$uid = $this->idByUser($this->Acct[$Parts[2]]);
 								pg_query($this->c, sprintf("INSERT INTO levels (channel_id, user_id, access, added, last_updated) VALUES ((select id from channels where name = '%s'), (select id from users where user_name = '%s'), %s, %s, 1933780085);",$Parts[1], $Parts[2], $Parts[3], time()));
 						} else {
-							$this->SendRaw(sprintf(":%s B %s :Bud, that did not work because you aren't an owner of that channel. :(", $this->s['BotNick'][$Dest], $Sender),1);
+							$this->SendRaw(sprintf(":%s B %s :Bud, that did not work because you aren't an owner of that channel. :(", $Target, $Sender),1);
 						}
 						break;
 					case "deluser":
 						if (!isset($this->Acct[$sender])) {
-								$this->SendRaw(sprintf(":%s B %s :Please log in to me to continue.",$this->s['BotNick'][$Dest], $Sender));
+								$this->SendRaw(sprintf(":%s B %s :Please log in to me to continue.",$Target, $Sender));
 								break;
 							}
 						if ($this->LoadChannelOps($Parts[1], $Parts[3]) > $this->LoadChannelOps($Parts[1], $this->Acct[$Sender])) {
-							$this->SendRaw(sprintf(":%s B %s :Deletion user as requested.", $this->s['BotNick'][$Dest], $Sender),1);
-							$this->SendRaw(sprintf("%s%s WC @%s :%s requested addition of %s at level %s", $this->s['BotNick'][$Dest], $Parts[1], $this->Num2Nick($Sender), $Parts[2], $Parts[3]),1);
+							$this->SendRaw(sprintf(":%s B %s :Deletion user as requested.", $Target, $Sender),1);
 								$id = $this->idByChan($Parts[1]);
 								$uid = $this->idByUser($this->Acct[$Parts[2]]);
 								pg_query($this->c, sprintf("DELETE FROM levels WHERE channel_id = (select id from channels where name = '%s') AND user_id = (select id from users where name = '%s');",$Parts[1], $Parts[2]));
 						} else {
-							$this->SendRaw(sprintf(":%s B %s :Bud, that did not work because you are deleting someone from a higher access than your own. :(", $this->s['BotNick'][$Dest], $Sender),1);
+							$this->SendRaw(sprintf(":%s B %s :Bud, that did not work because you are deleting someone from a higher access than your own. :(", $Target, $Sender),1);
 						}
 						break;
 					case "op":
 						if ($this->LoadChannelOps($Parts[1], $this->Acct[$Sender]) >= 100) {
-							$this->SendRaw(sprintf(":%s B %s :Opped you successfully with oplevel %s in %s. Congratulations.", $this->s['BotNick'][$Dest], $Sender,$this->LoadChannelOps($Parts[1], $this->Acct[$Sender]), $Parts[1]),1);
-							$this->SendRaw(sprintf(":%s G %s +o %s:%s %s", $this->s['BotNick'][$Dest], $Parts[1], $Sender, (501 - $this->LoadChannelOps($Parts[1], $this->Acct[$Sender])), $this->Channels[$Parts[1]]["CH-TS"]),1);
+							$this->SendRaw(sprintf(":%s B %s :Opped you successfully with oplevel %s in %s. Congratulations.", $Target, $Sender,$this->LoadChannelOps($Parts[1], $this->Acct[$Sender]), $Parts[1]),1);
+							$this->OpUser(1,$Parts[1],$Sender,$this->LoadChannelOps($Parts[1], $this->Acct[$Sender]));
 						} else {
-							$this->SendRaw(sprintf(":%s B %s :Go fuck yourself. User does not have access to channel.", $this->s['BotNick'][$Dest], $Sender, $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s B %s :Go fuck yourself. User does not have access to channel.", $Target, $Sender, $Parts[1]),1);
 						}
 						break;
 					case "chanop":
 						if (($this->LoadChannelOps($Parts[1], $this->Acct[$Sender]) >= 100) and ($Parts[3] < $this->LoadChannelOps($Parts[1], $this->Acct[$Sender]))) {
-							$this->SendRaw(sprintf(":%s B %s :Will chanop as specified", $this->s['BotNick'][$Dest], $Sender,$this->LoadChannelOps($Parts[1], $this->idByUser($this->Acct[$Sender])), $Parts[1]),1);
-							$this->SendRaw(sprintf(":%s G %s +o %s:%s %s", $this->s['BotNick'][$Dest], $Parts[1], array_search($Parts[2], $this->Nicks), (501 - $Parts[3]), $this->Channels[$Parts[1]]["CH-TS"]),1);
+							$this->SendRaw(sprintf(":%s B %s :Will chanop as specified", $Target, $Sender,$this->LoadChannelOps($Parts[1], $this->idByUser($this->Acct[$Sender])), $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s G %s +o %s:%s %s", $Target, $Parts[1], array_search($Parts[2], $this->Nicks), (501 - $Parts[3]), $this->Channels[$Parts[1]]["CH-TS"]),1);
 						} else {
-							$this->SendRaw(sprintf(":%s B %s :Go fuck yourself. Not enough access to op user at level.", $this->s['BotNick'][$Dest], $Sender, $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s B %s :Go fuck yourself. Not enough access to op user at level.", $Target, $Sender, $Parts[1]),1);
 						}
 						break;
 					case "deop":
 						if ($this->LoadChannelOps($Parts[1], $this->Acct[$Sender]) >= 100) {
-							$this->SendRaw(sprintf(":%s B %s :Will deop (using KICK and SVSJOIN) as specified", $this->s['BotNick'][$Dest], $Sender,$this->LoadChannelOps($Parts[1], $this->idByUser($this->Acct[$Sender])), $Parts[1]),1);
-							$this->SendRaw(sprintf("%s K %s %s :Removing from channel to deop correctly and compatibly", $this->ServiceNum, $Parts[1], array_search($Parts[2], $this->Nicks)),1);	
-							$this->SendRaw(sprintf("%s%s SJ %s %s", $this->s['BotNick'][$Dest], array_search($Parts[2], $this->Nicks), $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s B %s :Will deop (using KICK and SVSJOIN) as specified", $Target, $Sender,$this->LoadChannelOps($Parts[1], $this->idByUser($this->Acct[$Sender])), $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s H %s %s :Removing from channel to deop correctly and compatibly", $Target, array_search($Parts[2], $this->Nicks)),1);	
+							$this->SendRaw(sprintf(":%s BX %s %s", $Target, $Parts[2], $Parts[1]),1);
 						} else {
-							$this->SendRaw(sprintf(":%s B %s :Go fuck yourself. Not enough access to op user at level.", $this->s['BotNick'][$Dest], $Sender, $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s B %s :Go fuck yourself. Not enough access to op user at level.", $Target, $Sender, $Parts[1]),1);
 						}
 						break;
 					case "mode":
 						if ($this->LoadChannelOps($Parts[1], $this->Acct[$Sender]) >= 400) {
 							$Modes = explode(" ",$Msg,3);
-							$this->SendRaw(sprintf(":%s B %s :Changed modes %s successfully in %s. Congratulations.", $this->s['BotNick'][$Dest], $Sender, $Modes[2], $Parts[1]),1);
-							$this->SendRaw(sprintf(":%s G %s %s %s", $this->s['BotNick'][$Dest], $Modes[1], $Modes[2], $this->Channels[$Parts[1]]["CH-TS"]),1);
+							$this->SendRaw(sprintf(":%s B %s :Changed modes %s successfully in %s. Congratulations.", $Target, $Sender, $Modes[2], $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s G %s %s %s", $Target, $Modes[1], $Modes[2], $this->Channels[$Parts[1]]["CH-TS"]),1);
 						} else {
-							$this->SendRaw(sprintf(":%s B %s :Go fuck yourself. User does not have access to channel. Minimum 400.", $this->s['BotNick'][$Dest], $Sender, $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s B %s :Go fuck yourself. User does not have access to channel. Minimum 400.", $Target, $Sender, $Parts[1]),1);
 						}
 						break;
 					case "mdop":
 						if ($this->LoadChannelOps($Parts[1], $this->Acct[$Sender]) >= 350) {
 							$Modes = explode(" ",$Msg,3);
-							$this->SendRaw(sprintf(":%s B %s :Massively deopped channel and forcejoined/opped you. Congrats.", $this->s['BotNick'][$Dest], $Sender, $Modes[2], $Parts[1]),1);
-							$this->SendRaw(sprintf("%s CM %s ohvmisp %s", $this->ServiceNum, $Modes[1], $this->Channels[$Parts[1]]["CH-TS"]),1);
-							$this->SendRaw(sprintf("%s%s SJ %s %s", $this->s['BotNick'][$Dest], $Sender, $Parts[1]),1);
-							$this->SendRaw(sprintf(":%s G %s +o %s %s", $this->s['BotNick'][$Dest], $Parts[1], $Sender, $this->Channels[$Parts[1]]["CH-TS"]),1);
+							$this->SendRaw(sprintf(":%s B %s :Massively deopped channel and forcejoined/opped you. Congrats.", $Target, $Sender, $Modes[2], $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s n %s -ohvmisp %s", $Target, $Modes[1], $this->Channels[$Parts[1]]["CH-TS"]),1);
+							$this->SendRaw(sprintf(":%s BX %s %s", $Target, $Sender, $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s G %s +o %s %s", $Target, $Parts[1], $Sender, $this->Channels[$Parts[1]]["CH-TS"]),1);
 						} else {
-							$this->SendRaw(sprintf(":%s B %s :Go fuck yourself. User does not have access to channel. Minimum 350.", $this->s['BotNick'][$Dest], $Sender, $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s B %s :Go fuck yourself. User does not have access to channel. Minimum 350.", $Target, $Sender, $Parts[1]),1);
 						}
 						break;
 					case "halfop":
 						if (($this->LoadChannelOps($Parts[1], $this->Acct[$Sender]) >= 50) && $this->canHalfOp) {
-							$this->SendRaw(sprintf(":%s B %s :Half opped you successfully in %s. Congratulations.", $this->s['BotNick'][$Dest], $Sender, $Parts[1]),1);
-							$this->SendRaw(sprintf(":%s G %s +h %s %s", $this->s['BotNick'][$Dest], $Parts[1], $Sender, $this->Channels[$Parts[1]]["CH-TS"]),1);
+							$this->SendRaw(sprintf(":%s B %s :Half opped you successfully in %s. Congratulations.", $Target, $Sender, $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s G %s +h %s %s", $Target, $Parts[1], $Sender, $this->Channels[$Parts[1]]["CH-TS"]),1);
 						} elseif ($this->LoadChannelOps($Parts[1], $this->idByUser($this->Acct[$Sender])) >= 50) {
-							$this->SendRaw(sprintf(":%s B %s :Opped (level 50) you successfully in %s. Congratulations.", $this->s['BotNick'][$Dest], $Sender, $Parts[1]),1);
-							$this->SendRaw(sprintf(":%s G %s +o %s:50 %s", $this->s['BotNick'][$Dest], $Parts[1], $Sender, $this->Channels[$Parts[1]]["CH-TS"]),1);
+							$this->SendRaw(sprintf(":%s B %s :Opped (level 50) you successfully in %s. Congratulations.", $Target, $Sender, $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s G %s +o %s:50 %s", $Target, $Parts[1], $Sender, $this->Channels[$Parts[1]]["CH-TS"]),1);
 						} else {
-							$this->SendRaw(sprintf(":%s B %s :Go fuck yourself. User does not have access to channel or halfops impossible on ircd.", $this->s['BotNick'][$Dest], $Sender, $Parts[1]),1);
+							$this->SendRaw(sprintf(":%s B %s :Go fuck yourself. User does not have access to channel or halfops impossible on ircd.", $Target, $Sender, $Parts[1]),1);
 						}
 						break;
 					case "help":
@@ -726,46 +732,58 @@ EOF;
 						$help = explode(PHP_EOL, $txhelp);
 						$helpsize = array_pop(array_keys($help));
 						for ($i = 0;$i <= $helpsize;$i++) {
-							$buf = sprintf(":%s B %s :%s",$this->s['BotNick'][$Dest],$Sender,$help[$i]);
+							$buf = sprintf(":%s B %s :%s",$Target,$Sender,$help[$i]);
 							$this->SendRaw($buf,1);
 						}
 				}
 				break;
-			case 2:
+			case $this->s['BotNick'][3]:
+				case "register":
+				$Parts = explode(" ",$Msg);
+				$Cmd = strtolower(trim($Parts[0]));
+						if (!isset($this->Acct[$sender])) { $this->SendRaw(sprintf(":%s B %s :Please log in to me to continue.",$Target, $Sender)); break; }
+							$chid = time();
+							$this->SendRaw(sprintf(":%s B %s :Registering %s to you or specified user.", $Target, $Sender, $Parts[1]),1);
+							if (pg_fetch_result(pg_query(),0,0)){
+								pg_query($this->c, sprintf("INSERT INTO channels (id, name, registered_ts, channel_ts, channel_mode, limit_offset, limit_period, limit_grace, limit_max, last_updated) VALUES (%s, '%s', %s, %s, '+tnCT', 5, 20, 1, 0, 313370083);",$chid, $Parts[1], $chid, $this->Channels[strtolower($Parts[1])]["CH-TS"], time()));
+								pg_query($this->c, sprintf("INSERT INTO levels (channel_id, user_id, access, added, last_updated) VALUES (%s, (select id from users where user_name = '%s'), %s, %s, 1933780085);",$chid, $this->Acct[$Sender], "500", time()));
+							}
+					break;
+			case "H":
 				if (!empty($this->Opers[$Sender])) {
 				$Parts = explode(" ",$Msg);
 				$Cmd = strtolower(trim($Parts[0]));
 				switch ($Cmd) {
 					case "vhost":
-						$buf = sprintf("%s FA %s %s",$this->ServiceNum,$Parts[1],$Parts[2]);
+						$buf = sprintf(":%s AL %s %s",$this->ServerName,$Parts[1],$Parts[2]);
 						$this->SendRaw($buf,1);
 						break;
 					case "vhreg":
-						$buf = sprintf(":%s B %s :Set vhost %s on account %s.",$this->ServiceNum,$this->b64e("2"),$Sender,$Parts[2],$Parts[1]);
+						$buf = sprintf(":%s B %s :Set vhost %s on account %s.",$this->ServerName,$this->b64e("2"),$Sender,$Parts[2],$Parts[1]);
 						$this->SendRaw($buf,1);
 						$database = pg_connect($this->DatabaseParams);
 						$res = pg_query($database, "INSERT INTO vhosts VALUES ('".$Parts[2]."','".strtolower($Parts[1])."')");
 						$this->vhostIt(array_search(strtolower($Parts[1]), array_map('strtolower', $this->Acct)), $Parts[1]);
 						break;
 					case "cg":
-						$buf = sprintf(":%s B %s :Set gline %s.",$this->ServiceNum,$this->b64e("2"),$Sender,$Parts[1]);
+						$buf = sprintf(":%s B %s :Set gline %s.",$this->ServerName,$this->b64e("2"),$Sender,$Parts[1]);
 						$this->SendRaw($buf,1);
 						$database = pg_connect($this->DatabaseParams);
 						$res = pg_query($this->c, "INSERT INTO glinechan VALUES ('".strtolower($Parts[1])."')");
 						$this->vhostIt(array_search(strtolower($Parts[1]), array_map('strtolower', $this->Acct)), $Parts[1]);
 						break;
 					case "vhunreg":
-						$buf = sprintf(":%s B %s :Deleted vhost on account %s. Please ask the user of this account to reconnect.",$this->ServiceNum,$this->b64e("2"),$Sender,$Parts[1]);
+						$buf = sprintf(":%s B %s :Deleted vhost on account %s. Please ask the user of this account to reconnect.",$this->ServerName,$this->b64e("2"),$Sender,$Parts[1]);
 						$this->SendRaw($buf,1);
 						$database = pg_connect($this->DatabaseParams);
 						$res = pg_query($database, "DELETE FROM vhosts WHERE ac='".strtolower($Parts[1])."'");
 						break;
 					case "reqapp":
-						$buf = sprintf(":%s B %s :Application (none? this person did not apply!): %s",$this->ServiceNum,$this->b64e("2"),$Sender,system("/usr/bin/env grep -i 'account ".escapeshellcmd($Parts[1])." requested' requests.db"));
+						$buf = sprintf(":%s B %s :Application (none? this person did not apply!): %s",$this->ServerName,$this->b64e("2"),$Sender,system("/usr/bin/env grep -i 'account ".escapeshellcmd($Parts[1])." requested' requests.db"));
 						$this->SendRaw($buf,1);
 						break;
 					case "approve":
-						$buf = sprintf(":%s B %s :Approving %s' vhost, please ask him to reconnect.",$this->ServiceNum,$this->b64e("2"),$Sender,$Parts[1]);
+						$buf = sprintf(":%s B %s :Approving %s' vhost, please ask him to reconnect.",$this->ServerName,$this->b64e("2"),$Sender,$Parts[1]);
 						$this->SendRaw($buf,1);
 						$vhost = system("/usr/bin/env grep -vi 'account ".escapeshellcmd($Parts[1])." requested' requests.db > requests.db.new | cut -d' ' -f6 ; mv requests.db.new requests.db");
 						$database = pg_connect($this->DatabaseParams);
@@ -773,22 +791,22 @@ EOF;
 						$this->vhostIt(array_search($Parts[1], $this->Acct), $Parts[1]);
 						break;
 					default:
-						$buf = sprintf(":%s B %s :/msg ".$this->BotNick." vhreg <account> <vhost>",$this->ServiceNum,$this->b64e("2"),$Sender,$Parts[1]);
+						$buf = sprintf(":%s B %s :/msg ".$this->BotNick." vhreg <account> <vhost>",$this->ServerName,$this->b64e("2"),$Sender,$Parts[1]);
 						$this->SendRaw($buf,1);
 
-						$buf = sprintf(":%s B %s :Set a vHost on someone's account",$this->ServiceNum,$this->b64e("2"),$Sender,$Parts[1]);
+						$buf = sprintf(":%s B %s :Set a vHost on someone's account",$this->ServerName,$this->b64e("2"),$Sender,$Parts[1]);
 						$this->SendRaw($buf,1);
 
-						$buf = sprintf(":%s B %s :/msg ".$this->BotNick." vhunreg <account>",$this->ServiceNum,$this->b64e("2"),$Sender,$Parts[1]);
+						$buf = sprintf(":%s B %s :/msg ".$this->BotNick." vhunreg <account>",$this->ServerName,$this->b64e("2"),$Sender,$Parts[1]);
 						$this->SendRaw($buf,1);
 
-						$buf = sprintf(":%s B %s :Unset the vHost on someone's account",$this->ServiceNum,$this->b64e("2"),$Sender,$Parts[1]);
+						$buf = sprintf(":%s B %s :Unset the vHost on someone's account",$this->ServerName,$this->b64e("2"),$Sender,$Parts[1]);
 						$this->SendRaw($buf,1);
 
-						$buf = sprintf(":%s B %s :/msg ".$this->BotNick." reqapp <account>",$this->ServiceNum,$this->b64e("2"),$Sender,$Parts[1]);
+						$buf = sprintf(":%s B %s :/msg ".$this->BotNick." reqapp <account>",$this->ServerName,$this->b64e("2"),$Sender,$Parts[1]);
 						$this->SendRaw($buf,1);
 
-						$buf = sprintf(":%s B %s :See what someone requested for vhost",$this->ServiceNum,$this->b64e("2"),$Sender,$Parts[1]);
+						$buf = sprintf(":%s B %s :See what someone requested for vhost",$this->ServerName,$this->b64e("2"),$Sender,$Parts[1]);
 						$this->SendRaw($buf,1);
 						break;
 				}
@@ -797,9 +815,9 @@ EOF;
 				$Cmd = strtolower(trim($Parts[0]));
 				switch ($Cmd) {
 					case "request":
-						$buf = sprintf(":%s B %s :I just asked the opers to give you your requested vhost. You should receive it forthwithly.",$this->ServiceNum,$this->b64e("2"),$Sender,$Parts[1]);
+						$buf = sprintf(":%s B %s :I just asked the opers to give you your requested vhost. You should receive it forthwithly.",$this->ServerName,$this->b64e("2"),$Sender,$Parts[1]);
 						$this->SendRaw($buf,1);
-						$buf = sprintf("%s DS :account:%s requested:%s",$this->ServiceNum,$this->Acct[$Sender],$Parts[1]);
+						$buf = sprintf("%s DS :account:%s requested:%s",$this->ServerName,$this->Acct[$Sender],$Parts[1]);
 						$this->SendRaw($buf,1);
 						$buf = sprintf("at %lu account %s requested %s\n",time(),$this->Acct[$Sender],$Parts[1]);
 						$writo = fopen("requests.db", "a");
@@ -807,8 +825,8 @@ EOF;
 						fclose($writo);
 						break;
 					default:
-						$buf = sprintf(":%s B %s :/msg ".$this->BotNick." request",$this->ServiceNum,$this->b64e("2"),$Sender,$Parts[1]);
-						$buf = sprintf(":%s B %s :Request a vHost",$this->ServiceNum,$this->b64e("2"),$Sender,$Parts[1]);
+						$buf = sprintf(":%s B %s :/msg ".$this->BotNick." request",$this->ServerName,$this->b64e("2"),$Sender,$Parts[1]);
+						$buf = sprintf(":%s B %s :Request a vHost",$this->ServerName,$this->b64e("2"),$Sender,$Parts[1]);
 						$this->SendRaw($buf,1);
 						break;
 				}
@@ -819,29 +837,29 @@ EOF;
 				switch ($Cmd) {
 					case "adduser":
 						if (!isset($this->Acct[$sender])) {
-								$this->SendRaw(sprintf(":%s B %s :Please log in to me to continue.",$this->s['BotNick'][$Dest], $Sender));
+								$this->SendRaw(sprintf(":%s B %s :Please log in to me to continue.",$Target, $Sender));
 								break;
 							}
 						if ($Parts[2] > $this->LoadChannelOps($Target, $this->Acct[$Sender])) {
-							$this->SendRaw(sprintf("%s%s P %s :%s: Adding user as requested.", $this->ServiceNum,$this->b64e(1), $Target, $this->Num2Nick($Sender)),1);
-							$this->SendRaw(sprintf("%s%s WC @%s :%s requested addition of %s at level %s", $this->ServiceNum,$this->b64e(1), $Target, $this->Num2Nick($Sender), $Parts[1], $Parts[2]),1);
+							$this->SendRaw(sprintf("%s%s P %s :%s: Adding user as requested.", $this->ServerName,$this->b64e(1), $Target, $this->Num2Nick($Sender)),1);
+							$this->SendRaw(sprintf("%s%s WC @%s :%s requested addition of %s at level %s", $this->ServerName,$this->b64e(1), $Target, $this->Num2Nick($Sender), $Parts[1], $Parts[2]),1);
 								$id = $this->idByChan($Parts[1]);
 								$uid = $this->idByUser($this->Acct[$Parts[2]]);
 								pg_query($this->c, sprintf("INSERT INTO levels (channel_id, user_id, access, added, last_updated) VALUES ((select id from channels where name = '%s'), (select id from users where user_name = '%s'), %s, %s, 1933780085);",$Target, $Parts[1], $Parts[2], time()));
 						} else {
-							$this->SendRaw(sprintf(":%s B %s :Bud, that did not work because you are adding someone at a higher access than your own. :(", $this->s['BotNick'][$Dest], $Sender),1);
+							$this->SendRaw(sprintf(":%s B %s :Bud, that did not work because you are adding someone at a higher access than your own. :(", $Target, $Sender),1);
 						}
 						break;
 					case "op":
 						if ($this->LoadChannelOps($Target, $this->Acct[$Sender]) >= 100) {
-							$this->SendRaw(sprintf(":%s G %s +o %s:%s %s", $this->ServiceNum,$this->b64e(1), $Target, $Sender, (501 - $this->LoadChannelOps($Target, $this->Acct[$Sender])), $this->Channels[$Target]["CH-TS"]),1);
+							$this->SendRaw(sprintf(":%s G %s +o %s:%s %s", $this->ServerName,$this->b64e(1), $Target, $Sender, (501 - $this->LoadChannelOps($Target, $this->Acct[$Sender])), $this->Channels[$Target]["CH-TS"]),1);
 						} else {
 							$this->SendRaw(sprintf(":%s B %s :Go fuck yourself. User does not have access to channel.", $this->s['BotNick'][$Dest], $Sender, $Parts[1]),1);
 						}
 						break;
 					case "halfop":
 						if ($this->LoadChannelOps($Target, $this->Acct[$Sender]) >= 50) {
-							$this->SendRaw(sprintf(":%s G %s +h %s %s", $this->ServiceNum,$this->b64e(1), $Target, $Sender, $this->Channels[$Target]["CH-TS"]),1);
+							$this->SendRaw(sprintf(":%s G %s +h %s %s", $this->ServerName,$this->b64e(1), $Target, $Sender, $this->Channels[$Target]["CH-TS"]),1);
 						} else {
 							$this->SendRaw(sprintf("%s%s P %s :%s: Permission denied.", $this->s['BotNick'][$Dest], $Target, $this->Num2Nick($Sender)),1);
 						}
@@ -883,7 +901,7 @@ EOF;
 						$help = explode(PHP_EOL, $txhelp);
 						$helpsize = array_pop(array_keys($help));
 						for ($i = 0;$i <= $helpsize;$i++) {
-							$buf = sprintf(":%s B %s :%s",$this->ServiceNum,$this->b64e(1),$Sender,$help[$i]);
+							$buf = sprintf(":%s B %s :%s",$this->ServerName,$this->b64e(1),$Sender,$help[$i]);
 							$this->SendRaw($buf,1);
 						}
 				}
