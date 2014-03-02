@@ -62,35 +62,7 @@ class FishBot {
 
 	/******** CONFIGURATION - BEGIN  ********/
 	function FishBot() {
-		$this->hlpIdx = <<<EOF
-*** \x02$botname\x02 Help ***
-
-\x02X\x02 allows you to 'register' a channel. Although at this time it does not
-prevent takeovers or fix them, it will soon (with DEOPALL).
-
-Currently available commands are:
-\x02HALFOP\x02                Halfops you in a channel in which you have
-                      enough access (level 50)
-\x02OP\x02                    Ops you in a channel in which you have
-                      enough access (level 100)
-\x02LOGIN\x02                 Logs you into CService.
-\x02CHANREGISTER\x02          Allows you to register your channel with
-                      CService.
-\x02MDOP\x02                  If you are chanlev 350 or above, you may
-                      mass-deop your channel. This removes \x02ALL\x02 ops,
-                      halfops and voices and forcejoins and ops just
-                      you. Use with care, and only if your channel has
-                      been taken over.
-\x02REGISTER\x02              If you wish to register your username,
-                      go to the site mentioned in /msg $botname help
-                      register
-                      and follow the instructions given to you at
-                      CService customs.
-\x02CHANOP\x02                Level-ops \$3 with \$4 on \$2
-                      Requires 100 level and level above oplevel specif-
-                      ied
-*** End Help ***
-EOF;
+		
 
 $this->about = <<<EOF
 *** About \x02$botname\x02 ***
@@ -156,13 +128,23 @@ EOF;
 		
 		$this->EB = FALSE; /* Please don't change this */
 	}
+	
+	function isAkilled($Numeric, $Host, $Ident) {
+		$res = pg_query($this->d, "SELECT host, user FROM glines;");
+		for ($i = 0; $i < pg_num_rows($res); $i++) {
+			$idHost = pg_fetch_result($res, $i, "host");
+			$idIdent = pg_fetch_result($res, $i, "user");
+			if (fnmatch($idHost, $Host)) { return true; } else { if (fnmatch($idIdent, $Ident)) { return true; } else { return false; } }
+		}
+	}
+		
 	function StartBot() {
 		/* Yup, how about begin with the real work, THE BOTS! */
 		$this->Socket = fsockopen($this->ServerHost,$this->ServerPort);
 		$Time = time();
 		$tmp = sprintf('PASS :%s',$this->ServerPass);
 		$this->SendRaw($tmp,1);
-		$tmp = sprintf('SERVER %s 1 %s %s J10 %s]]] +s6o :%s',$this->ServerName,$Time,$Time,$this->ServiceNum,$this->ServiceDesc);
+		$tmp = sprintf('SERVER %s 1 %s %s J10 %s]]] +sh6o :%s',$this->ServerName,$Time,$Time,$this->ServiceNum,$this->ServiceDesc);
 		$this->SendRaw($tmp,1);
 		
 		for ($k = 1; $k <= $this->srvs; $k++) {
@@ -171,6 +153,8 @@ EOF;
 			$this->SendRaw($tmp,1);
 		}
 		$tmp = sprintf('%s EB',$this->ServiceNum);
+		$this->SendRaw($tmp,1);
+		$tmp = sprintf('%s EA',$this->ServiceNum);
 		$this->SendRaw($tmp,1);
 		$this->Counter =0;
 		
@@ -361,56 +345,71 @@ function std_check_password($username, $password) {
 		}
 	}
 	
+	function isIdentified($Numeric,$Account) {
+		$res = pg_query($this->d, "SELECT nickname FROM nicks WHERE username = '".$Account."';");
+		$idNick = pg_fetch_result($res, "nickname");
+		if ($idNick == $this->Nicks[$Numeric]) { return true; } else { return false; }
+	}
+	function isWrongNick($Numeric,$Account) {
+		$res = pg_query($this->d, "SELECT username FROM nicks WHERE nickname = '".$Account."';");
+		$idNick = pg_fetch_result($res, "username");
+		if (($idNick != $this->Acct[$Numeric]) and isset($this->Acct[$Numeric]) and (pg_num_rows($res))) { return true; } else { return false; }
+	}
+	function isRegNick($Numeric) {
+		$res = pg_query($this->d, "SELECT username FROM nicks WHERE nickname = '".$Account."';");
+		$idNick = pg_fetch_result($res, "username");
+		$idNick = pg_num_rows($res, "username");
+		if ($rows) { return true; } else { return false; }
+	}
+	
 	function DoCloak($Numeric,$WillAcct) {
+		var_dump($this->Hosts[$Numeric]);
 		if ((strlen($this->Acct[$Numeric]) >= 2) and $WillAcct) {
 			$this->SendRaw(sprintf("%s SM %s +x", $this->ServiceNum, $Numeric),1);
 			$this->vhostIt($Numeric,$this->Acct[$Numeric]);
 			$this->SendRaw(sprintf("%s SID %s %s", $this->ServiceNum, $Numeric,$this->Acct[$Numeric]),1);
 		} else {
-			if (preg_match("/^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$/", $this->Hosts[$Numeric])) {
-				$this->SendRaw(sprintf("%s FA %s %s.%s-%s.%s",
-				$this->ServiceNum,
-				$Numeric, 
-				implode(".", array_slice(explode(".",$this->Hosts[$Numeric]),0,2)),
-				$this->NetworkName, 
-				substr($this->convBase(hash("sha512", $this->CloakKey2.implode(".", array_slice(explode(".",$this->Hosts[$Numeric]),1,1)).$this->CloakKey1),"0123456789ABCDEF","0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"),20,4),
-				substr($this->convBase(hash("sha512", $this->CloakKey2.$this->Hosts[$Numeric].$this->CloakKey1),"0123456789ABCDEF","0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"),20,4))
-				,1);
+			if (preg_match("/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/", $this->Hosts[$Numeric])) {
+				$hostActive = sprintf("%s.%s.%s/%s",
+				implode(".", array_slice(explode(".",$this->Hosts[$Numeric]),0,2)), 
+				substr($this->convBase(hash("sha384", $this->CloakKey2.implode(".", array_slice(explode(".",$this->Hosts[$Numeric]),1,1)).$this->CloakKey1),"0123456789ABCDEF","0123456789abcdefghijklmnopqrstuvwxyz"),20,4),
+				substr($this->convBase(hash("sha384", $this->CloakKey2.$this->Hosts[$Numeric].$this->CloakKey1),"0123456789ABCDEF","0123456789abcdefghijklmnopqrstuvwxyz"),20,4),
+				$this->NetworkName);
 			} elseif (preg_match("/:/", $this->IPs[$Numeric]) and !(preg_match("/\./", $this->Hosts[$Numeric]))) {
-				$this->SendRaw(sprintf("%s FA %s %s:%s-%s:%s:%s:%s",
-				$this->ServiceNum,
-				$Numeric, 
-				implode(":", array_slice(explode(":",$this->Hosts[$Numeric]),0,4)),
-				$this->NetworkName, 
-				substr($this->convBase(hash("sha512", $this->CloakKey2.implode(":", array_slice(explode(":",$this->IPs[$Numeric]),4,1)).$this->CloakKey1),"0123456789ABCDEF","0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"),0,4),
-				substr($this->convBase(hash("sha512", $this->CloakKey2.implode(":", array_slice(explode(":",$this->IPs[$Numeric]),5,1)).$this->CloakKey1),"0123456789ABCDEF","0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"),0,4),
-				substr($this->convBase(hash("sha512", $this->CloakKey2.implode(":", array_slice(explode(":",$this->IPs[$Numeric]),6,1)).$this->CloakKey1),"0123456789ABCDEF","0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"),0,4),
-				substr($this->convBase(hash("sha512", $this->CloakKey2.$this->Hosts[$Numeric].$this->CloakKey1),"0123456789ABCDEF","0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"),0,4)
-				)
-				,1);
+				$hostActive = sprintf("%s:%s:%s:%s:%s/%s",
+				implode(":", array_slice(explode(":",$this->Hosts[$Numeric]),0,4)), 
+				substr($this->convBase(hash("sha384", $this->CloakKey2.implode(":", array_slice(explode(":",$this->IPs[$Numeric]),4,1)).$this->CloakKey1),"0123456789ABCDEF","0123456789abcdefghijklmnopqrstuvwxyz"),0,4),
+				substr($this->convBase(hash("sha384", $this->CloakKey2.implode(":", array_slice(explode(":",$this->IPs[$Numeric]),5,1)).$this->CloakKey1),"0123456789ABCDEF","0123456789abcdefghijklmnopqrstuvwxyz"),0,4),
+				substr($this->convBase(hash("sha384", $this->CloakKey2.implode(":", array_slice(explode(":",$this->IPs[$Numeric]),6,1)).$this->CloakKey1),"0123456789ABCDEF","0123456789abcdefghijklmnopqrstuvwxyz"),0,4),
+				substr($this->convBase(hash("sha384", $this->CloakKey2.$this->Hosts[$Numeric].$this->CloakKey1),"0123456789ABCDEF","0123456789abcdefghijklmnopqrstuvwxyz"),0,4),
+				$this->NetworkName
+				);
 			} else {
 				$HostSlice = explode(".",$this->Hosts[$Numeric]);
 				var_dump($HostSlice);
-				if (count($HostSlice) > 3) {
-					$this->SendRaw(sprintf("%s FA %s %s-%s.%s.%s",
-					$this->ServiceNum, 
-					$Numeric, 
-					$this->NetworkName,
-					substr($this->convBase(hash("sha512",$this->CloakKey2.$this->Hosts[$Numeric].$this->CloakKey1),"0123456789ABCDEF","0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"),0,6),
-					substr($this->convBase(hash("sha512",$this->CloakKey2.implode(".", array_slice(explode(".",$this->Hosts[$Numeric]),count($HostSlice) > 4 ? 4 : (count($HostSlice) > 2 ? 2 : 1),1)).$this->CloakKey1),"0123456789ABCDEF","0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"),0,6),
-					implode(".", array_slice($HostSlice,count($HostSlice) > 4 ? -4 : (count($HostSlice) > 2 ? -2 : -1)))),1);
+				$lastSlice = array_pop($HostSlice);
+				$nlstSlice = array_pop($HostSlice);
+				$tlstSlice = array_pop($HostSlice);
+				if (count($HostSlice) > 0) {
+					foreach ($HostSlice as $slice) {
+						if ($hostActive != "") { $hostActive = $hostActive . "." . substr($this->convBase(hash("sha384",$this->CloakKey2.$slice.$this->CloakKey1),"0123456789ABCDEF","0123456789abcdefghijklmnopqrstuvwxyz"),0,strlen($slice)); } else { $hostActive = substr($this->convBase(hash("sha384",$this->CloakKey2.$slice.$this->CloakKey1),"0123456789ABCDEF","0123456789abcdefghijklmnopqrstuvwxyz"),0,strlen($slice)); }
+						var_dump($hostActive);
+						var_dump($slice);
+					}
+					$hostActive = $hostActive .".". $tlstSlice. ".". $nlstSlice .".". $lastSlice . "/" . $this->NetworkName;
+				} elseif ($tlstSlice) {
+					$hostActive = substr($this->convBase(hash("sha384",$this->CloakKey2.$tlstSlice.$this->CloakKey1),"0123456789ABCDEF","0123456789abcdefghijklmnopqrstuvwxyz"),0,strlen($tlstSlice)).".". $nlstSlice .".". $lastSlice . "/" . $this->NetworkName;
 				} else {
-					$this->SendRaw(sprintf("%s FA %s %s-%s.%s",
-					$this->ServiceNum, 
-					$Numeric, 
-					$this->NetworkName,
-					substr($this->convBase(hash("sha512",$this->CloakKey2.$this->Hosts[$Numeric].$this->CloakKey1),"0123456789ABCDEF","0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"),0,6),
-					implode(".", array_slice($HostSlice,-2))),1);
+					$hostActive = substr($this->convBase(hash("sha384",$this->CloakKey2.$nlstSlice.$this->CloakKey1),"0123456789ABCDEF","0123456789abcdefghijklmnopqrstuvwxyz"),0,strlen($nlstSlice)).".". $lastSlice . "/" . $this->NetworkName;
 				}
-			}
-			$this->SendRaw(sprintf("%s SM %s +x", $this->ServiceNum, $Numeric),1);
+				
 		}
 	}
+			$this->SendRaw(sprintf("%s O #connexit :*** \x02Cloak activation\x02: Numeric %s, nick %s, and cloaked-hostname %s", $this->ServiceNum, $Numeric, $this->Num2Nick($Numeric), $hostActive),1);
+			$this->SendRaw(sprintf("%s FA %s %s", $this->ServiceNum, $Numeric, $hostActive),1);
+			$this->SendRaw(sprintf("%s SM %s +x", $this->ServiceNum, $Numeric),1);
+
+}
 	
 	function Idle() {
 		/* Checking the incoming information */
@@ -420,7 +419,11 @@ function std_check_password($username, $password) {
 				$Args = explode(" ",$this->Get);
 				$Cmd = trim($Args[1]);
 				printf("get: %s", $this->Get);@ob_flush();
-				$Dest = $this->convBase(substr($Args[2], -3),"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789[]","0123456789");
+				if (!(preg_match("/@/", $Args[2]))) {
+					$Dest = $this->convBase(substr($Args[2], -3),"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789[]","0123456789");
+				} else {
+					$Dest = array_search(strstr($Args[2], "@", TRUE), $this->s['BotNick']);
+				}
 				switch ($Cmd) {
 					case "EB": /* End of Burst */
 						$this->EA();
@@ -432,14 +435,14 @@ function std_check_password($username, $password) {
 						$this->PrivMsg($Dest,$Args,$this->Get);
 						break;
 					case "N": /* We got a nick-change or a nick-burst msg */
-						$this->SaveNicks($Args);
+						$this->SaveNicks($Args);$this->SendRaw(sprintf("%s O #connexit :*** \x02Connect\x02: %s", $this->ServiceNum, $this->Get),1);
 						break;
 					case "OM":
 					case "M": /* A oper logged in, or a chanmode changed? */
 						$this->AddOper($Args);
 						break;
 					case "Q": /* They quit as well, finally! :P */
-						$this->DelUser($Args);
+						$this->DelUser($Args);$this->SendRaw(sprintf("%s O #connexit :*** \x02Exit\x02: %s", $this->ServiceNum, $this->Get),1);
 						break;
 					case "B": /* We received a burst line */
 						$this->Burst($Args);
@@ -454,6 +457,7 @@ function std_check_password($username, $password) {
 						if ($Args[3] == "R") {
 							$this->Acct[$Args[2]] = str_replace(array("\r", "\n"), "", $Args[4]);
 							$this->vhostIt($Args[2],str_replace(array("\r", "\n"), "", $Args[4]));
+							$this->SendRaw(sprintf("%s O #connexit :*** \x02Auth\x02: %s", $this->ServiceNum, $this->Get),1);
 						} elseif ($Args[3] == "C") {
 							$passphrase = substr(str_replace(array("\r", "\n"), "", $Args[6]),1);
 							$username = $Args[5];
@@ -465,6 +469,11 @@ function std_check_password($username, $password) {
 							unset($passphrase);
 							unset($username);
 						}
+						if ($this->isIdentified($Numeric, $this->Acct[$Numeric])) {
+							$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+						} else {
+							$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is not currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+						}
 						break;
 					case "L": /* If somebody parts a channel, we have to notice that */
 						$this->DelChan($Args);
@@ -472,6 +481,9 @@ function std_check_password($username, $password) {
 					case "SASL": /* If somebody uses SASL, we have to work that out. */
 						$this->DoSASL($Args);
 						break;
+					default:
+						/* We do not know. So we'll send it to the snotice channel. */
+						$this->SendRaw(sprintf("%s O #connexit :*** \x02Raw data\x02: %s", $this->ServiceNum, $this->Get),1);
 				}
 			}
 		}
@@ -627,6 +639,7 @@ function std_check_password($username, $password) {
 							$this->SendRaw(sprintf("%s%s O %s :Not enough parameters.", $this->ServiceNum,$this->b64e($Dest), $Sender),1); break; }
 						if ($this->std_check_password($Parts[1], $Parts[2])) {
 							$this->Acct[$Sender] = $Parts[1];
+							$this->SendRaw(sprintf("%s O #connexit :*** \x02Auth\x02: %s", $this->ServiceNum, $this->Num2Nick($Sender), $Parts[1]),1);
 							$this->AcctID[$Sender] = $this->idByUser($Parts[1]);
 							$this->SendRaw(sprintf("%s AC %s R %s", $this->ServiceNum, $Sender, $Parts[1]),1);$this->Acct[$sender] = $Parts[1];
 							$this->SendRaw(sprintf("%s SID %s %s", $this->ServiceNum, $Sender, $Parts[1]),1);$this->Acct[$sender] = $Parts[1];
@@ -636,6 +649,31 @@ function std_check_password($username, $password) {
 						} else {
 							$this->SendRaw(sprintf("%s%s O %s :Go fuck yourself. Wrong login name or password for %s.", $this->ServiceNum,$this->b64e($Dest), $Sender, $Parts[1]),1);
 						}
+						break;
+					case "addnick":
+						if ($this->isWrongNick($Sender, $this->Acct[$Sender])) { $this->SendRaw(sprintf("%s%s O %s :Someone else already owns the nickname \x02%s\x02.",$this->ServiceNum,$this->b64e(1), $Sender, $this->Nicks[$Sender]),1); break; }
+						if ($this->isIdentified($Sender, $this->Acct[$Sender])) { $this->SendRaw(sprintf("%s%s O %s :You already own the nickname \x02%s\x02.",$this->ServiceNum,$this->b64e(1), $Sender, $this->Nicks[$Sender]),1); break; }
+						if (!($this->isIdentified($Sender, $this->Acct[$Sender])) and !($this->isWrongNick($Sender, $this->Acct[$Sender])) and (isset($this->Acct[$sender]))) {
+							$this->SendRaw(sprintf("%s%s O %s :Congratulations, you now own the nickname \x02%s\x02.",$this->ServiceNum,$this->b64e(1), $Sender, $this->Nicks[$Sender]),1);
+							pg_query($this->d, "INSERT INTO nicks VALUES ('".$this->Acct[$Sender]."', '".$this->Nicks[$Sender]."');");
+							$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+							break;
+						}
+						$this->SendRaw(sprintf("%s%s O %s :You should never receive this message.",$this->ServiceNum,$this->b64e(1), $Sender),1);
+						break;
+					case "regain":
+						if (!($this->isIdentified($Sender, $this->Acct[$Sender])) and !($this->isWrongNick($Sender, $this->Acct[$Sender])) and (isset($this->Acct[$sender]))) {
+							$res = pg_query($this->d, "SELECT nickname FROM nicks WHERE username = '".$this->Acct[$sender]."';");
+							$idNick = pg_fetch_result($res, "nickname");
+							if (pg_num_rows($res)) {
+								$this->SendRaw(sprintf("%s%s O %s :Congratulations, you have now regained the nickname \x02%s\x02.",$this->ServiceNum,$this->b64e(1), $Sender, $idNick),1);
+								$this->SendRaw(sprintf("%s%s O %s :[\x02CService Nickname Protection\x02] Your nickname has been regained by \x02%s\x02.",$this->ServiceNum,$this->b64e(1), array_search($idNick, $this->Nicks), $this->Nicks[$Sender]),1);$this->SendRaw(sprintf("%s SX %s :[\x02CService Nickname Protection\x02] Your nickname has been regained by \x02%s\x02.",$this->ServiceNum, array_search($idNick, $this->Nicks), $this->Nicks[$Sender]),1);
+								sleep(1);
+								$this->SendRaw(sprintf("%s SN %s %s",$this->ServiceNum, $Sender, $idNick),1);
+							}
+							break;
+						}
+						$this->SendRaw(sprintf("%s%s O %s :You should never receive this message.",$this->ServiceNum,$this->b64e(1), $Sender),1);
 						break;
 					case "chanregister":
 						if (!isset($this->Acct[$sender])) { $this->SendRaw(sprintf("%s%s O %s :Please log in to me to continue.",$this->ServiceNum,$this->b64e($Dest), $Sender)); break; }
@@ -873,8 +911,37 @@ EOF;
 								$txhelp = $this->about;
 								break;
 							default:
-							
-							$txhelp = $this->hlpIdx;
+							$this->XhlpIdx = <<<EOF
+*** \x02$botname\x02 Help ***
+   
+\x02X\x02 allows you to 'register' a channel. Although at this time it does not
+prevent takeovers or fix them, it will soon (with DEOPALL).
+   
+Currently available commands are:
+\x02HALFOP\x02                Halfops you in a channel in which you have
+                      enough access (level 50)
+\x02OP\x02                    Ops you in a channel in which you have
+                      enough access (level 100)
+\x02LOGIN\x02                 Logs you into CService.
+\x02CHANREGISTER\x02          Allows you to register your channel with
+                      CService.
+\x02MDOP\x02                  If you are chanlev 350 or above, you may
+                      mass-deop your channel. This removes \x02ALL\x02 ops,
+                      halfops and voices and forcejoins and ops just
+                      you. Use with care, and only if your channel has
+                      been taken over.
+\x02REGISTER\x02              If you wish to register your username,
+                      go to the site mentioned in /msg $botname help
+                      register
+                      and follow the instructions given to you at
+                      CService customs.
+\x02CHANOP\x02                Level-ops \$3 with \$4 on \$2
+                      Requires 100 level and level above oplevel specif-
+                      ied
+   
+*** End Help ***
+EOF;
+							$txhelp = $this->XhlpIdx;
 							break;
 						}
 						$help = explode(PHP_EOL, $txhelp);
@@ -900,6 +967,17 @@ EOF;
 						$database = pg_connect($this->DatabaseParams);
 						$res = pg_query($database, "INSERT INTO vhosts VALUES ('".$Parts[2]."','".strtolower($Parts[1])."')");
 						$this->vhostIt(array_search(strtolower($Parts[1]), array_map('strtolower', $this->Acct)), $Parts[1]);
+						break;
+					case "raw":
+						$buf = sprintf("%s%s O %s :Raw traffic sent.",$this->ServiceNum,$this->b64e("2"),$Sender,$Parts[2],$Parts[1]);
+						$this->SendRaw($buf,1);
+						$buf = sprintf("%s",implode(" ", array_slice($Parts,1)));
+						$this->SendRaw($buf,1);
+						break;
+					case "akill":
+						$buf = sprintf("%s%s O %s :Akill set.",$this->ServiceNum,$this->b64e("2"),$Sender);
+						$this->SendRaw($buf,1);
+						$res = pg_query($this->c, "INSERT INTO glines VALUES ('".strtolower($Parts[1])."', '".strtolower($Parts[2])."')");
 						break;
 					case "global":
 						$buf = sprintf("%s%s O %s :Sending a \x02GLOBAL NOTICE\x02 as specified.",$this->ServiceNum,$this->b64e("2"),$Sender);
@@ -1098,6 +1176,7 @@ EOF;
 				break;
 		}
 	}
+	
 	function Burst($Args) {
 		/* When we receive a burst message, we have to know how many users are in the chan
 		   so we can build a function, when the channel is empty, the bot should part.
@@ -1172,11 +1251,15 @@ EOF;
 		$Oper = false;
 		
 		if (count($Args) == 4) { /* Nick change */
-			$Numeric = $Args[3];
+			$Numeric = $Args[0];
 			$Nick = $Args[2];
 			$this->Nicks[$Numeric] = $Nick;
+						if (isset($this->Acct[$Numeric]) and ($this->isIdentified($Numeric, $this->Acct[$Numeric]))) {
+							$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+						} else {
+							$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is not currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+						}
 			return 0;
-			
 		}
 		$Modes = $Args[7];
 		if (preg_match("/\+/i",$Modes)) {
@@ -1240,16 +1323,22 @@ EOF;
 			
 			}
 		$Host = $Args[6];
-		$this->Hosts[$Numeric] = $Host;
+		$this->Hosts[$Numeric] = $Args[6];
 		$this->Nicks[$Numeric] = $Nick;
 		$this->Opers[$Numeric] = $Oper;
+		$this->Ident[$Numeric] = $Args[5];
+		if ($this->isAkilled($Numeric, $Args[6], $Args[5])) $this->SendRaw(sprintf("%s%s SX %s :[\x02CService AutoKill\x02] A channel service oper has glined you.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
 		
-		$this->DoCloak($Numeric,TRUE);
+		$this->DoCloak($Numeric,TRUE); 
 		
-		if ($this->is_blacklisted($this->IPs[$Numeric])) {
-			$this->SendRaw(sprintf("%s%s SX %s :[\x02CService AutoKill\x02] You use Tor. We do not like Tor users on AsterIRC. In the future we will provide Tor + LOC access.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
-			$this->SendRaw(sprintf("%s%s GL *@%s :[\x02CService AutoKill\x02] You use Tor. We do not like Tor users on AsterIRC. In the future we will provide Tor + LOC access.", $this->ServiceNum, $this->b64e(1), $this->Hosts[$Numeric]),1);
-		}
+		if ($this->is_blacklisted($this->IPs[$Numeric]) and !($this->Acct[$Numeric])) {
+			$this->SendRaw(sprintf("%s%s SX %s :[\x02CService AutoKill\x02] You use Tor, or another blacklisted open proxy. To continue using AsterIRC, create an account with the Channel Service @ http://www.umbrellix.tk/live/newuser.php and then use Login On Connect by using /<username>/<password> as your connection password.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+		} 
+						if (isset($this->Acct[$Numeric]) and ($this->isIdentified($Numeric, $this->Acct[$Numeric]))) {
+							$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+						} else {
+							$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is not currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+						}
 	}
 
 	function Num2Nick($Numeric) {
