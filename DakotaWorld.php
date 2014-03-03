@@ -67,9 +67,13 @@ class FishBot {
 $this->about = <<<EOF
 *** About \x02$botname\x02 ***
 
-\x02$botname\x02 is an instance of HyperStar, a multi-client monolithic pseud-
+\x02$botname\x02 is an instance of Galactic, a multi-client monolithic pseud-
 oserver for P10-based IRC networks (and more protocols are to follow).
 
+This will soon be modular. If you want to aid it this happening, please
+come to irc.umbrellix.tk #asterirc and discuss the development plan
+there. We accept all suggestions.
+    
 My other clients are probably just a hostserv. Ask your admin.
 
 *** End Help ***
@@ -107,7 +111,7 @@ EOF;
 		$this->CloakKey2 = "5fb.y4DHp.y4dh,pfd<h.pfH246h<PfH<PiyHOeuIBHoh,pyh<PFhA>ypdoid";
 		$this->RelayChan = "#announce";
 
-		$this->ServerName = "host.serv";
+		$this->ServerName = "services.";
 		$this->ServerHost = "tcp://127.0.0.1"; /* IP/Host to connect to */
 		$this->ServerPort = 4400; /* Port to connect to */
 		$this->ServerPass = "link"; /* Password to use for the connection between the service and server */
@@ -270,7 +274,7 @@ function b64e($id, $alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx
    }
 }
 	
-function std_make_password($password, $crypt) {
+function std_make_password($password, $crypt="") {
 	$valid = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.$*_";
 	$salt = "";
 	srand((double) microtime() * 1000000);
@@ -280,11 +284,11 @@ function std_make_password($password, $crypt) {
 	}
 	for ($k = 0; $k < 8; $k++)
 		$salt = $salt . $valid[rand(0, strlen($valid)-1)];
-	$crypt = $salt . md5($salt . $password); return $crypt;
+	$crypt = $salt . hash("sha512",$salt . $password); return $crypt;
 }
 
 function std_check_password($username, $password) {
-        $chk = pg_exec($this->c, "SELECT password, id FROM users WHERE lower(user_name) = lower('$username')");
+        $chk = pg_exec($this->c, "SELECT password, id FROM users WHERE lower(user_name) = lower('{$username}')");
  	if (pg_numrows($chk) == 0)
 		return false; // Failed
 	$chk = pg_fetch_object($chk, 0);
@@ -293,7 +297,10 @@ function std_check_password($username, $password) {
 		return true; // Success
 	$salt = substr($crypt, 0, 8);
 	$crypt = substr($crypt, 8);
-	if (md5($salt . $password) == $crypt)
+	if (md5($salt . $password) == $crypt) {
+		pg_query($this->c, "UPDATE users SET password = '".$this->std_make_password($password)."' WHERE lower(user_name) = lower('{$username}')");
+		return true; // Success! except we updated the user's password lol so that it would not be lamely encrypted
+	} elseif (hash("sha512",$salt . $password) == $crypt)
 		return true; // Success!
 	return false; // Failed
 }
@@ -681,7 +688,7 @@ function std_check_password($username, $password) {
 							$chid = time();
 							$this->SendRaw(sprintf("%s%s O %s :Registering %s to you or specified user.", $this->ServiceNum,$this->b64e($Dest), $Sender, $Parts[1]),1);
 							
-							$this->SendRaw(sprintf("%s%s WC @%s :%s registered this channel.", $this->ServiceNum,$this->b64e($Dest), $Parts[1], $this->Num2Nick($Sender)),1);
+							$this->SendRaw(sprintf("%s%s O %s :%s has registered this channel.", $this->ServiceNum,$this->b64e($Dest), $Parts[1], $this->Num2Nick($Sender)),1);
 							if (!isset($this->Channels[strtolower($Parts[1])]["CH-ID"])){
 								pg_query($this->c, sprintf("INSERT INTO channels (id, name, registered_ts, channel_ts, channel_mode, limit_offset, limit_period, limit_grace, limit_max, last_updated) VALUES (%s, '%s', %s, %s, '+tnCN', 5, 20, 1, 0, 313370083);",$chid, $Parts[1], $chid, $this->Channels[strtolower($Parts[1])]["CH-TS"], time()));
 								pg_query($this->c, sprintf("INSERT INTO levels (channel_id, user_id, access, added, last_updated) VALUES (%s, (select id from users where user_name = '%s'), %s, %s, 1933780085);",$chid, $this->Acct[$Sender], "500", time()));
@@ -1195,12 +1202,22 @@ EOF;
 		if (isset($this->Users[$Chan])) {
 		$Temp = explode(",",$this->Users[$Chan]);
 		foreach ($Temp as $Index => $Num) {
-			if (strpos($Num, ":o") == 5) $this->Channels[$Chan][$Num]["op"] = true;
+			if (strpos($Num, ":o") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
+			if (strpos($Num, ":0") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
+			if (strpos($Num, ":1") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
+			if (strpos($Num, ":2") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
+			if (strpos($Num, ":3") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
+			if (strpos($Num, ":4") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
+			if (strpos($Num, ":5") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
+			if (strpos($Num, ":6") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
+			if (strpos($Num, ":7") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
+			if (strpos($Num, ":8") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
+			if (strpos($Num, ":9") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
 			$Num = str_replace(":ov","",$Num);
 			$Num = str_replace(":o","",$Num);
 			$Num = str_replace(":v","",$Num);
 			$Num = trim($Num);
-			$this->Channels[$Chan][$Num]["in"] = TRUE;
+			$this->Channels[$Chan][substr($Num,0,5)]["in"] = TRUE;
 			$this->Channels[$Chan]["CH-TS"] = $Args[3];
 		} }
 	}
