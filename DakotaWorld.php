@@ -78,6 +78,8 @@ My other clients are probably just a hostserv. Ask your admin.
 
 *** End Help ***
 EOF;
+
+
 		/* Configuring the bot */
 		$this->ServiceName = "HStar"; /* Name of the bot */
 		$this->ServiceDesc = "For how to get a vhost type: /msg HStar help"; /* The IRC Name and Discription */
@@ -258,7 +260,22 @@ function b64e($id, $alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx
 		}
 		$this->SendRaw($buf,1);
 	}
-	function is_blacklisted($ip) {
+   function is_blacklisted($ip) {
+   // written by satmd, do what you want with it, but keep the author please
+   $result=Array();
+   $dnsbl_check=array("6667.163.94.246.46.ip-port.exitlist.torproject.org"); // Srsly, change this.
+   if ($ip) {
+       $quads=explode(".",$ip);
+       $rip=$quads[3].".".$quads[2].".".$quads[1].".".$quads[0];
+       for ($i=0; $i<count($dnsbl_check); $i++) {
+           if (checkdnsrr($rip.".".$dnsbl_check[$i].".","A")) {
+              $result[]=Array($dnsbl_check[$i],$rip.".".$dnsbl_check[$i]);
+           }
+         }
+      return $result;
+   }
+}
+ function is_blacklisted_tor($ip) {
    // written by satmd, do what you want with it, but keep the author please
    $result=Array();
    $dnsbl_check=array("6667.163.94.246.46.ip-port.exitlist.torproject.org"); // Srsly, change this.
@@ -352,21 +369,31 @@ function std_check_password($username, $password) {
 		}
 	}
 	
-	function isIdentified($Numeric,$Account) {
-		$res = pg_query($this->d, "SELECT nickname FROM nicks WHERE username = '".$Account."';");
-		$idNick = pg_fetch_result($res, "nickname");
-		if ($idNick == $this->Nicks[$Numeric]) { return true; } else { return false; }
+	function isIdentified($Numeric) {
+		$res = pg_query($this->d, "SELECT nickname FROM nicks WHERE username = '".$this->Acct[$Numeric]."';");
+		$idNick = pg_fetch_row($res);
+		var_dump($res);
+		var_dump($idNick);
+		if ($idNick[0] == $this->Nicks[$Numeric]) { return true; } else { return false; }
 	}
-	function isWrongNick($Numeric,$Account) {
-		$res = pg_query($this->d, "SELECT username FROM nicks WHERE nickname = '".$Account."';");
+	function isWrongNick($Numeric,$Account="") {
+		if ($Account == "" and $this->isRegNick($Numeric)) return true;
+		$res = pg_query($this->d, "SELECT username FROM nicks WHERE nickname = '".$this->Nicks[$Numeric]."';");
 		$idNick = pg_fetch_result($res, "username");
 		if (($idNick != $this->Acct[$Numeric]) and isset($this->Acct[$Numeric]) and (pg_num_rows($res))) { return true; } else { return false; }
 	}
 	function isRegNick($Numeric) {
-		$res = pg_query($this->d, "SELECT username FROM nicks WHERE nickname = '".$Account."';");
+		$res = pg_query($this->d, "SELECT username FROM nicks WHERE nickname = '".$this->Nicks[$Numeric]."';");
 		$idNick = pg_fetch_result($res, "username");
-		$idNick = pg_num_rows($res, "username");
-		if ($rows) { return true; } else { return false; }
+		$rows = pg_num_rows($res);
+		if ($rows) { return $idNick; } else { return false; }
+	}
+	
+	function isProtectNick($Numeric) {
+		$res = pg_query($this->d, "SELECT protect FROM nicks WHERE nickname = '".$this->Nicks[$Numeric]."';");
+		$idNick = pg_fetch_result($res, "protect");
+		$rows = pg_num_rows($res);
+		if ($idNick == "a") { return true; } else { return false; }
 	}
 	
 	function DoCloak($Numeric,$WillAcct) {
@@ -419,13 +446,33 @@ function std_check_password($username, $password) {
 }
 	
 	function Idle() {
-		/* Checking the incoming information */
+		/* Checking the incoming information and protect nicknames that are to be protected */
 		while (!feof($this->Socket)) {
+			foreach ($this->Timers as $Numeric => $time) {
+				if ((($time + 60) == time()) and $this->NickHold[$Numeric] and $this->isProtectNick($Numeric)) {
+					$oldnick = $this->Nicks[$Numeric];
+					$nick = "Guest".rand(1,9). rand(1,9). rand(1,9). rand(1,9). rand(1,9);
+					$this->SendRaw(sprintf("%s SN %s %s", $this->ServiceNum, $Numeric, $nick),1);
+					$this->SendRaw(sprintf("%s%s O %s :Since you did not identify to your nickname in time, your nickname is now being changed to \x02%s\x02.", $this->ServiceNum, $this->b64e(1), $Numeric, $nick),1);
+					$lock = $this->b64e(rand(4097, 262143));
+					while (!($this->Locks[array_search($lock, $this->Locks)])) $lock = $this->b64e(rand(4097, 262143));
+					$this->Locks[$oldnick] = $lock;
+					$this->LockTimers[$lock] = time();
+					$this->SendRaw(sprintf("%s N %s 1 %s nickenf Nickname.Enforcement.Services B]AAAB %s%s :Nickname enforcement", $this->ServiceNum, $oldnick, time(), $this->ServiceNum, $this->b64e($this->Locks[$oldnick])),1);
+					unset($this->NickHold[$Numeric]);
+				} else {
+					unset($this->NickHold[$Numeric]);
+				}
+			}
+			foreach ($this->Locks as $Nick => $Numeric) {
+				if (($this->LockTimers[$Numeric] + 60) == time()) {
+					$this->SendRaw(sprintf("%s%s Q :%s", $this->ServiceNum, $this->b64e($Numeric), $nick),1);
+				}
+			}
 			$this->Get = fgets($this->Socket,512);
 			if (!empty($this->Get)) {
 				$Args = explode(" ",$this->Get);
 				$Cmd = trim($Args[1]);
-				printf("get: %s", $this->Get);@ob_flush();
 				if (!(preg_match("/@/", $Args[2]))) {
 					$Dest = $this->convBase(substr($Args[2], -3),"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789[]","0123456789");
 				} else {
@@ -652,9 +699,29 @@ function std_check_password($username, $password) {
 							$this->SendRaw(sprintf("%s SID %s %s", $this->ServiceNum, $Sender, $Parts[1]),1);$this->Acct[$sender] = $Parts[1];
 							$this->SendRaw(sprintf("%s SM %s +x", $this->ServiceNum, $Sender),1);
 							$this->vhostIt($Sender, $Parts[1]);
+							usleep(50000);
 							$this->SendRaw(sprintf("%s%s O %s :Logged you in successfully as %s. Congratulations.", $this->ServiceNum,$this->b64e($Dest), $Sender, $Parts[1]),1);
-						} else {
+							if ($this->isIdentified($Sender)) {
+								$this->SendRaw(sprintf("%s%s O %s :\x02IDENTIFICATION SUCCESSFUL!\x02 You are now identified for this nickname.", $this->ServiceNum,$this->b64e($Dest), $Sender),1);
+								$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+								unset($this->NickHold[$Numeric]);
+							} else {
+								$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is not currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+							}
+							} else {
 							$this->SendRaw(sprintf("%s%s O %s :Go fuck yourself. Wrong login name or password for %s.", $this->ServiceNum,$this->b64e($Dest), $Sender, $Parts[1]),1);
+						}
+						break;
+					case "autoregain":
+						if ($this->isIdentified($Sender)) { 
+							pg_query($this->d,"UPDATE nicks SET protect='a' WHERE username='{$this->Acct[$Sender]}'");
+							$this->SendRaw(sprintf("%s%s O %s :Your nickname will now automatically be regained by services.", $this->ServiceNum,$this->b64e($Dest), $Sender),1);
+						}
+						break;
+					case "noregain":
+						if ($this->isIdentified($Sender)) { 
+							pg_query($this->d,"UPDATE nicks SET protect='a' WHERE username='{$this->Acct[$Sender]}'");
+							$this->SendRaw(sprintf("%s%s O %s :Your nickname will no longer be regained by services.", $this->ServiceNum,$this->b64e($Dest), $Sender),1);
 						}
 						break;
 					case "addnick":
@@ -1251,7 +1318,6 @@ EOF;
 	
 	function SendRaw($Line,$Show) {
 		/* This sends information to the server */
-		printf("%s\r\n",$Line);
 		fwrite($this->Socket,$Line."\r\n");
 	}
 	
@@ -1271,11 +1337,20 @@ EOF;
 			$Numeric = $Args[0];
 			$Nick = $Args[2];
 			$this->Nicks[$Numeric] = $Nick;
-						if (isset($this->Acct[$Numeric]) and ($this->isIdentified($Numeric, $this->Acct[$Numeric]))) {
-							$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
-						} else {
-							$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is not currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
-						}
+			if ($this->isIdentified($Numeric)) {
+				$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+			} else {
+			if ($this->isWrongNick($Numeric, $this->Acct[$Numeric])) {
+				$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is currently on someone else's nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+				$this->SendRaw(sprintf("%s%s O %s :                  ---===[\x02CService Nickname Protection\x02]===---", $this->ServiceNum,$this->b64e(1), $Numeric),1);
+				$this->SendRaw(sprintf("%s%s O %s :Your current nickname is registered and protected. If this is your nickname, please", $this->ServiceNum,$this->b64e(1), $Numeric),1);
+				$this->SendRaw(sprintf("%s%s O %s :  log in to the appropriate CService account. If you do not change your nick, the", $this->ServiceNum,$this->b64e(1), $Numeric),1);
+				$this->SendRaw(sprintf("%s%s O %s :      nickname's owner is entitled to force you off the network.", $this->ServiceNum,$this->b64e(1), $Numeric),1);
+				$this->SendRaw(sprintf("%s%s O %s :           To log in, type \x02/msg %s@%s LOGIN \x1fusername password\x1f\x02", $this->ServiceNum,$this->b64e(1), $Numeric, $this->s['BotNick'][1], $this->ServerName),1);
+				$this->Timers[$Numeric] = time();$this->NickHold[$Numeric] = "Hold";
+			} else {
+				$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is not currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+			} }
 			return 0;
 		}
 		$Modes = $Args[7];
@@ -1337,7 +1412,6 @@ EOF;
 			} else {
 				$this->IPs[$Numeric] = inet_ntop($this->convBase($Args[7],"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789[]","0123456789"));
 			}
-			
 			}
 		$Host = $Args[6];
 		$this->Hosts[$Numeric] = $Args[6];
@@ -1348,14 +1422,24 @@ EOF;
 		
 		$this->DoCloak($Numeric,TRUE); 
 		
-		if ($this->is_blacklisted($this->IPs[$Numeric]) and !($this->Acct[$Numeric])) {
-			$this->SendRaw(sprintf("%s%s SX %s :[\x02CService AutoKill\x02] You use Tor, or another blacklisted open proxy. To continue using AsterIRC, create an account with the Channel Service @ http://www.umbrellix.tk/live/newuser.php and then use Login On Connect by using /<username>/<password> as your connection password.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+		if ($this->is_blacklisted_tor($this->IPs[$Numeric]) and !($this->Acct[$Numeric])) {
+			$this->SendRaw(sprintf("%s%s O %s :[\x02CService Network Protection\x02] You use Tor. For this reason, your hostname is now being changed.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
 		} 
-						if (isset($this->Acct[$Numeric]) and ($this->isIdentified($Numeric, $this->Acct[$Numeric]))) {
-							$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
-						} else {
-							$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is not currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
-						}
+			if ($this->isIdentified($Numeric)) {
+				$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+			} else {
+			if ($this->isWrongNick($Numeric, $this->Acct[$Numeric])) {
+				$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is currently on someone else's nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+$this->SendRaw(sprintf("%s%s O %s :                  ---===[\x02CService Nickname Protection\x02]===---", $this->ServiceNum,$this->b64e(1), $Numeric),1);
+$this->SendRaw(sprintf("%s%s O %s :Your current nickname is registered and protected. If this is your nickname, please", $this->ServiceNum,$this->b64e(1), $Numeric),1);
+$this->SendRaw(sprintf("%s%s O %s :  log in to the appropriate CService account. If you do not change your nick, the", $this->ServiceNum,$this->b64e(1), $Numeric),1);
+$this->SendRaw(sprintf("%s%s O %s :           nickname's owner is entitled to force you off the network.", $this->ServiceNum,$this->b64e(1), $Numeric),1);
+$this->SendRaw(sprintf("%s%s O %s :           To log in, type \x02/msg %s@%s LOGIN \x1fusername password\x1f\x02", $this->ServiceNum,$this->b64e(1), $Numeric, $this->s['BotNick'][1], $this->ServerName),1);
+$this->Timers[$Numeric] = time();
+$this->NickHold[$Numeric] = "Hold";
+			} else {
+				$this->SendRaw(sprintf("%s%s SW %s :[\x02CService Nickname Protection\x02] This user is not currently identified for his nickname.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+			} }
 	}
 
 	function Num2Nick($Numeric) {
@@ -1363,7 +1447,7 @@ EOF;
 		if (!empty($this->Nicks[$Numeric]))
 			return $this->Nicks[$Numeric];
 		else
-			return "N/A";
+			return ".n.a.";
 	}
 }
 
