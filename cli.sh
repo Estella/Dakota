@@ -276,6 +276,27 @@ while read -r com argv1 argv2 args ; do
 		putserv "QUIT :$argv1 $argv2 $args"
 		echo "CLOSING LINK: Quit"
 		sleep 5 ; exit
+	elif grep -i "/help" <<<"$com" >/dev/null ; then
+		while read line ; do
+			echo "$timestamp ${BOLD_BLUE}-${WHITE}!${BOLD_BLUE}-${WHITE} $line"
+		done << EOF
+Quick zIRCc help:
+:active changes the active target. Requires one argument, new active PRIVMSG target.
+:nick changes your nickname. Requires as many arguments as your ircd's NICK command takes.
+:ctcp sends a CTCP to someone. You will receive a notice telling you what the reply is.
+:me will do a /me in the active target.
+:meis is a new feature. The IRCd sees it as a channel CTCP. Do NOT use when other clients will not interpret it correctly.
+This CTCP is to a target, like :ctcp, but without needing a CTCP question.
+:put is like Irssi's /raw.
+:m <target> <message> sends <message> to <target> as a PRIVMSG.
+:hm is as above, but does not reprint what you type.
+:n sends a NOTICE. Same as :m otherwise.
+:inv will invite someone to some channel. this should be DUH on the syntax.
+:l will leave a channel, specified as the argument.
+:j will join a channel, specified as the argument, or part all channels if the argument is 0 (only works on most IRCds)
+:flag is like /mode on most IRC clients.
+:dcb is :me but to a target other than the active target.
+EOF
 	else
 		read user host < hostfile
 		test -n "$activetarg" && ( privmsg "$activetarg" "$com $argv1 $argv2 $args"
