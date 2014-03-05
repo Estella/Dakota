@@ -35,7 +35,7 @@ class AnoPHP {
 	function AnoPHP() {
 		$this->Server = "irc.freenode.net";
 		$this->FirstChannel = "##wrpl";
-		$this->ConnectPassword = "dvorakbot:a";
+		$this->ConnectPassword = "dvorakbot:posterlane";
 		$this->BotNick = "DvorakBot";
 		//$this->OnConnectCMD = "PRIVMSG NickServ@services. :IDENTIFY lolwtfux";
 		$this->Port = 6667;
@@ -113,6 +113,13 @@ class AnoPHP {
 				case "!join":
 					$this->SendNtc($srcN, sprintf("JOINING %s", $cmdline[1]));
 					$this->SendRaw(sprintf("JOIN %s", $cmdline[1]));
+					break;
+				case "!part":
+					$this->SendMsg($target, sprintf("Goodbye!"));
+					$this->SendRaw(sprintf("PART %s", $target));
+					break;
+				case "!kill":
+					$this->SendMsg($target, sprintf("\x01ACTION kills %s with a large baseball bat.\x01", $args));
 					break;
 				case "hi":
 					$this->SendMsg($target, sprintf("Hello, %s.", $srcN));
