@@ -121,6 +121,9 @@ class AnoPHP {
 				case "!kill":
 					$this->SendMsg($target, sprintf("\x01ACTION kills %s with a large baseball bat.\x01", $args));
 					break;
+				case "!random":
+					$this->SendMsg($target, sprintf("Random number: %s", mt_rand()));
+					break;
 				case "hi":
 					$this->SendMsg($target, sprintf("Hello, %s.", $srcN));
 					break;
