@@ -1443,6 +1443,7 @@ $this->SendRaw(sprintf(":%s%s NOTICE %s :           To log in, type \x02/msg %s@
 	}
 }
 
+}
 $FishBot = new FishBot();
 $FishBot->LoadChannels();
 $FishBot->StartBot();
