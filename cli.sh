@@ -73,11 +73,19 @@ echo "NICK $3" >&4
 
 onRaw(){
 	recv="$(perl -p -e 's/^:(\S+) (\S+) (\S+) (.+)$/$4/g' <<<$msg | sed -e 's/^://g')"
-	if test "$srcnick" = "$srchost" ; then
+	if test "$4" = "ERROR" ; then
+		sed -e 's/ERROR ://g' <<<"$recv" | read -r recv
+		echo "$timestamp $BOLD_RED$4$WHITE $recv"
+	elif test "$srcnick" = "$srchost" ; then
 		echo "$timestamp $RED!$1:$4$WHITE $recv"
 	else
 		echo "$timestamp ${BOLD_BLACK}-${BOLD_BLUE}$1${BOLD_BLACK}($BLUE${2}@${3}$BOLD_BLACK)-$WHITE RAW: $4 $5"
 	fi
+}
+
+onBanned(){
+	perl -p -e 's/^:(\S+) (\S+) (\S+) (.+)$/$4/g' <<<"$msg" | sed -e 's/^://g' | read recv
+	echo "$timestamp ${BOLD_RED}[Banned from server]$WHITE $recv"
 }
 
 onPrivmsg(){
@@ -222,6 +230,8 @@ while read -r mesg ; do
 		onWho "$srcnick" "$arg"
 	elif grep -i "372" <<<"$com" >/dev/null ; then
 		onMotd "$srcnick" "$lastarg"
+	elif grep -i "465" <<<"$com" >/dev/null ; then
+		onBanned "$srcnick" "$lastarg"
 	else
 		grep -i '^NOTICE AUTH' <<<"$msg" >/dev/null && onNotice "Server" "" "" "AUTH" "$lastarg" || onRaw "$srcnick" "$srcuser" "$srchost" "$com" "$arg"
 	fi
@@ -301,7 +311,7 @@ EOF
 		read user host < hostfile
 		test -n "$activetarg" && ( privmsg "$activetarg" "$com $argv1 $argv2 $args"
 		onPrivmsg "$nick" "$user" "$host" "$activetarg" "$com $argv1 $argv2 $args"
-		)|| echo "$timestamp" "${BOLD_BLUE}-${WHITE}!${BOLD_BLUE}-${WHITE}" Huh\? WTF are you on about\? Tell me in words I\'ll understand.
+		)|| echo "$timestamp" "${BOLD_BLUE}-${WHITE}!${BOLD_BLUE}-${WHITE}" Huh\? WTF are you on about\? Tell me in words I\'ll understand. "(no active target to send message to)"
 	fi
 done
 rm hostfile
