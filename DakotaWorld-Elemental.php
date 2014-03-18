@@ -121,9 +121,9 @@ EOF;
 		$this->NetworkTorPrefix = "gateway/tor-loc/";	
 		$this->NetworkTorIdent = "tor";	
 
-		$this->ServerName = "services.";
-		$this->ServerHost = "tcp://127.0.0.1"; /* IP/Host to connect to */
-		$this->ServerPort = 4400; /* Port to connect to */
+		$this->ServerName = "ircd.";
+		$this->ServerHost = "tcp://127.0.0.3"; /* IP/Host to connect to */
+		$this->ServerPort = 6667; /* Port to connect to */
 		$this->ServerPass = "link"; /* Password to use for the connection between the service and server */
 		$this->DeBug = TRUE; /* TRUE = on, FALSE = off */
 		/* TIP: If you put DeBug TRUE, and you are starting the script like this: ./fishbot.php &, then it's
