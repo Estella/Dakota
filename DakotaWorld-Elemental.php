@@ -595,6 +595,11 @@ function std_check_password($username, $password) {
 		$this->SendRaw($tmp,0);
 	}
 	
+	function SendRaw($Msg,$luldick="lel") {
+		/* Sending a msg */
+		fwrite($this->Socket, sprintf('%s\r\n',$Msg));
+	}
+	
 	function AddChop($Args) {
 		// I didn't even bother documenting this xD
 		$Modes = trim($Args[4]);
