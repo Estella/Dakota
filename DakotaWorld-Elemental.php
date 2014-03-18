@@ -280,9 +280,9 @@ function b64e($id, $alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
 		$rows = pg_num_rows($res);
 		$chans = pg_fetch_row($res);
 		for ($i = 1;$chans != FALSE;$i++) {
-			$tmp = sprintf("%s B %s %s %sRz %s%s:298",$this->ServiceNum,$chans[0],$chans[1],$chans[2],$this->ServiceNum,$this->b64e(51));
+			$tmp = sprintf(":%s SJOIN %s %s %sP :!@%s%s",$this->ServiceNum,$chans[1],$chans[0],$chans[2],$this->ServiceNum,$this->b64e(1));
 			$this->SendRaw($tmp,1);
-			$tmp = sprintf("%s%s L %s :I only joined to set registered channel modes thru BURST.",$this->ServiceNum,$this->b64e(51),$chans[0]);
+			$tmp = sprintf("%s%s L %s :I only joined to set registered channel modes thru BURST.",$this->ServiceNum,$this->b64e(1),$chans[0]);
 			$this->SendRaw($tmp,1);
 			$chans = pg_fetch_row($res);
 			$this->Channels[strtolower($chans[0])]["CH-ID"] = $chans[3];
