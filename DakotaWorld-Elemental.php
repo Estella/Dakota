@@ -122,7 +122,7 @@ EOF;
 		$this->NetworkTorIdent = "tor";	
 
 		$this->ServerName = "ircd.";
-		$this->ServerHost = "tcp://127.0.0.3"; /* IP/Host to connect to */
+		$this->ServerHost = "127.0.0.3"; /* IP/Host to connect to */
 		$this->ServerPort = 6667; /* Port to connect to */
 		$this->ServerPass = "link"; /* Password to use for the connection between the service and server */
 		$this->DeBug = TRUE; /* TRUE = on, FALSE = off */
@@ -154,7 +154,7 @@ EOF;
 		
 	function StartBot() {
 		/* Yup, how about begin with the real work, THE BOTS! */
-		$this->Socket = fsockopen($this->ServerHost,$this->ServerPort);
+		$this->Socket = fsockopen("127.0.0.1",$this->ServerPort);
 		//$this->PartyLine = socket_create(AF_INET, SOCK_STREAM, "tcp");
 		//$clients = array($this->PartyLine);
 		//socket_bind($this->PartyLine, $this->PartyLineHost, $this->PartyLinePort);
@@ -174,8 +174,6 @@ EOF;
 			$this->SendRaw($tmp,1);
 		}
 		$tmp = sprintf(':%s SVINFO 6 6 0',$this->ServiceNum);
-		$this->SendRaw($tmp,1);
-		$tmp = sprintf('%s EA',$this->ServiceNum);
 		$this->SendRaw($tmp,1);
 		$this->Counter =0;
 		
