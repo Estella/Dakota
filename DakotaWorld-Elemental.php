@@ -122,7 +122,7 @@ EOF;
 		$this->NetworkTorIdent = "tor";	
 
 		$this->ServerName = "ircd.";
-		$this->ServerHost = "127.0.0.3"; /* IP/Host to connect to */
+		$this->ServerHost = "127.0.0.1"; /* IP/Host to connect to */
 		$this->ServerPort = 6667; /* Port to connect to */
 		$this->ServerPass = "link"; /* Password to use for the connection between the service and server */
 		$this->DeBug = TRUE; /* TRUE = on, FALSE = off */
@@ -154,12 +154,11 @@ EOF;
 		
 	function StartBot() {
 		/* Yup, how about begin with the real work, THE BOTS! */
-		$this->Socket = fsockopen("127.0.0.1",$this->ServerPort);
+		$this->Socket = fsockopen("127.0.0.1", 6667);
 		//$this->PartyLine = socket_create(AF_INET, SOCK_STREAM, "tcp");
 		//$clients = array($this->PartyLine);
 		//socket_bind($this->PartyLine, $this->PartyLineHost, $this->PartyLinePort);
 		//socket_listen($this->PartyLine);
-
 		$Time = time();
 		$tmp = sprintf('CAPAB :EX IE SERVICES SVS RSFNC EUID',$this->ServerPass, $this->ServiceNum);
 		$this->SendRaw($tmp,1);
@@ -167,23 +166,17 @@ EOF;
 		$this->SendRaw($tmp,1);
 		$tmp = sprintf('SERVER %s 1 :%s',$this->ServerName,$this->ServiceDesc);
 		$this->SendRaw($tmp,1);
-		
 		for ($k = 1; $k <= $this->srvs; $k++) {
-			$tmp = sprintf(':%s EUID %s 1 %s %s %s %s 0 %s * %s :%s',$this->ServiceNum,$this->s['BotNick'][$k],
-							$Time,$this->s['BotModes'][$k],$this->s['BotUser'][$k],$this->s['BotHost'][$k],$this->b64e($k),$this->s['BotNick'][$k],$this->s['Desc'][$k]);
+			$tmp = sprintf(':%s EUID %s 1 %s %s %s %s 0 %s%s * %s :%s',$this->ServiceNum,$this->s['BotNick'][$k],
+							$Time,$this->s['BotModes'][$k],$this->s['BotUser'][$k],$this->s['BotHost'][$k],$this->ServiceNum,$this->b64e($k),$this->s['BotNick'][$k],$this->s['Desc'][$k]);
 			$this->SendRaw($tmp,1);
 		}
-		$tmp = sprintf(':%s SVINFO 6 6 0',$this->ServiceNum);
+		$tmp = sprintf(':%s SVINFO 6 6 0 :%s',$this->ServiceNum, $Time);
 		$this->SendRaw($tmp,1);
 		$this->Counter =0;
-		
-		
-		if ($this->DeBug) {
-			printf("Bot sended his own information to the server, waiting for respond.\n");
-			@ob_flush();
-		}
+		$this->Bursted = 1;
 		do {
-			$this->Get = fgets($this->Socket,512);
+			$this->Get = fgets($this->Socket,2048);
 			if (feof($this->Socket)) die("Socket returned end of file.\n");
 			if ($this->Get != "") $this->Idle();
 		} while (true); 
@@ -282,7 +275,7 @@ function b64e($id, $alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
 		for ($i = 1;$chans != FALSE;$i++) {
 			$tmp = sprintf(":%s SJOIN %s %s %sP :!@%s%s",$this->ServiceNum,$chans[1],$chans[0],$chans[2],$this->ServiceNum,$this->b64e(1));
 			$this->SendRaw($tmp,1);
-			$tmp = sprintf("%s%s L %s :I only joined to set registered channel modes thru BURST.",$this->ServiceNum,$this->b64e(1),$chans[0]);
+			$tmp = sprintf(":%s%s PART %s :I only joined to set registered channel modes thru BURST.",$this->ServiceNum,$this->b64e(1),$chans[0]);
 			$this->SendRaw($tmp,1);
 			$chans = pg_fetch_row($res);
 			$this->Channels[strtolower($chans[0])]["CH-ID"] = $chans[3];
@@ -546,6 +539,11 @@ function std_check_password($username, $password) {
 					case "PART": /* If somebody parts a channel, we have to notice that */
 						$this->DelChan($Args);
 						break;
+					case "NOTICE":
+					if (!($this->Bursted == 1))
+				{
+				}
+					break;
 					default:
 						/* We do not know. So we'll send it to the snotice channel. */
 						$this->SendRaw(sprintf(":%s NOTICE #connexit :*** \x02Raw data\x02: %s", $this->ServiceNum, $this->Get),1);
@@ -592,12 +590,6 @@ function std_check_password($username, $password) {
 		$tmp = sprintf(':%s PRIVMSG %s :%s',$this->BotNum,$To,$Msg);
 		$this->SendRaw($tmp,0);
 	}
-	
-	function SendRaw($Msg,$luldick="lel") {
-		/* Sending a msg */
-		fwrite($this->Socket, sprintf('%s\r\n',$Msg));
-	}
-	
 	function AddChop($Args) {
 		// I didn't even bother documenting this xD
 		$Modes = trim($Args[4]);
@@ -657,7 +649,48 @@ function std_check_password($username, $password) {
 				}
 		}
 	}
-	
+	function SaveNicks($Args) {
+		/* Somebody changed his nick or a server is telling us his users */
+		/* [get] AP N Q 2 100 TheQBot Q.AliTriX.nl +oiwdk B]AAAB APAAA :The Q Bot
+		   [get] AB N AliTriX 1 1061147585 wer alitrix.homelinux.net +oiwg B]AAAB ABAAG :Ali
+		   [get] ABAAG N test 1061154478 */
+		$Nick = $Args[2];
+		$Oper = false;
+		if (count($Args) == 4) { /* Nick change */
+			$Numeric = substr($Args[0],-9);
+			$Nick = $Args[2];
+			$this->Nicks[$Numeric] = $Nick;
+			if ($this->isWrongNick($Numeric, $this->Acct[$Numeric])) {
+				$this->SendRaw(sprintf(":%s%s NOTICE %s :                  ---===[\x02CService Nickname Protection\x02]===---", $this->ServiceNum,$this->b64e(1), $Numeric),1);
+				$this->SendRaw(sprintf(":%s%s NOTICE %s :Your current nickname is registered and protected. If this is your nickname, please", $this->ServiceNum,$this->b64e(1), $Numeric),1);
+				$this->SendRaw(sprintf(":%s%s NOTICE %s :  log in to the appropriate CService account. If you do not change your nick, the", $this->ServiceNum,$this->b64e(1), $Numeric),1);
+				$this->SendRaw(sprintf(":%s%s NOTICE %s :           nickname's owner is entitled to force you off the network.", $this->ServiceNum,$this->b64e(1), $Numeric),1);
+				$this->SendRaw(sprintf(":%s%s NOTICE %s :           To log in, type \x02/msg %s@%s LOGIN \x1fusername password\x1f\x02", $this->ServiceNum,$this->b64e(1), $Numeric, $this->s['BotNick'][1], $this->ServerName),1);
+			}
+			return 0;
+		}
+		$Modes = $Args[5];
+		$Numeric = $Args[9];
+		$Host = $Args[6];
+		$this->Hosts[$Numeric] = ($Args[10] == "*") ? $Args[7] : $Args[10];
+		$this->IPs[$Numeric] = ($Args[9] == "0") ? "0.0.0.0" : $Args[9];
+		$this->Acct[$Numeric] = ($Args[11] == "*") ? "" : $Args[11];
+		$this->Nicks[$Numeric] = $Nick;
+		$this->Opers[$Numeric] = $Oper;
+		$this->Ident[$Numeric] = $Args[6];
+		$this->DoCloak($Numeric,TRUE); 
+		if ($this->is_blacklisted_tor($this->IPs[$Numeric]) and !($this->Acct[$Numeric])) {
+			$this->SendRaw(sprintf(":%s%s KILL %s :[\x02CService Network Protection\x02] You use Tor in a manner unacceptable to our network.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
+		}
+			if ($this->isWrongNick($Numeric, $this->Acct[$Numeric])) {
+$this->SendRaw(sprintf(":%s%s NOTICE %s :                  ---===[\x02CService Nickname Protection\x02]===---", $this->ServiceNum,$this->b64e(1), $Numeric),1);
+$this->SendRaw(sprintf(":%s%s NOTICE %s :Your current nickname is registered and protected. If this is your nickname, please", $this->ServiceNum,$this->b64e(1), $Numeric),1);
+$this->SendRaw(sprintf(":%s%s NOTICE %s :  log in to the appropriate CService account. If you do not change your nick, the", $this->ServiceNum,$this->b64e(1), $Numeric),1);
+$this->SendRaw(sprintf(":%s%s NOTICE %s :           nickname's owner is entitled to force you off the network.", $this->ServiceNum,$this->b64e(1), $Numeric),1);
+$this->SendRaw(sprintf(":%s%s NOTICE %s :           To log in, type \x02/msg %s@%s LOGIN \x1fusername\x1f \x1fpassword\x1f\x02", $this->ServiceNum,$this->b64e(1), $Numeric, $this->s['BotNick'][1], $this->ServerName),1);
+			}
+	}
+
 	function PrivMsg($Dest,$Args,$Line) {
 		/* Somebody msg'ed something to me or to a channel */
 		/* [get] ABAAG P #blaat :Joh, wzp?	<-- Chan-msg
@@ -1271,16 +1304,6 @@ EOF;
 		$Temp = explode(",",$this->Users[$Chan]);
 		foreach ($Temp as $Index => $Num) {
 			if (strpos($Num, ":o") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
-			if (strpos($Num, ":0") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
-			if (strpos($Num, ":1") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
-			if (strpos($Num, ":2") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
-			if (strpos($Num, ":3") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
-			if (strpos($Num, ":4") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
-			if (strpos($Num, ":5") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
-			if (strpos($Num, ":6") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
-			if (strpos($Num, ":7") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
-			if (strpos($Num, ":8") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
-			if (strpos($Num, ":9") == 5) $this->Channels[$Chan][substr($Num,0,5)]["op"] = true;
 			$Num = str_replace(":ov","",$Num);
 			$Num = str_replace(":o","",$Num);
 			$Num = str_replace(":v","",$Num);
@@ -1298,16 +1321,7 @@ EOF;
 		var_dump($this->LoadChannelOps($Chan, $this->Acct[$Num]));
 		if ($Args[1] == "C")
 			$this->Channels[$Chan][$Num]["op"] = true;
-		if ($this->LoadChannelOps($Chan, $this->Acct[$Num]) >= 100) {
-			$this->SendRaw(sprintf(":%s%s NOTICE %s :Opped you successfully with oplevel %s in %s. Congratulations.", $this->ServiceNum,$this->b64e(1), $Num,$this->LoadChannelOps($Chan, $this->Acct[$Num]), $Parts[1], $Chan),1);
-			$this->SendRaw(sprintf("%s%s M %s +o %s:%s %s", $this->ServiceNum,$this->b64e(1), $Chan, $Num, (501 - $this->LoadChannelOps($Chan, $this->Acct[$Num])), $this->Channels[$Chan]["CH-TS"]),1);
-		}
-		if (($this->LoadChannelOps($Chan, $this->Acct[$Num]) >= 50) and ($this->LoadChannelOps($Chan, $this->Acct[$Num]) <= 99)) {
-			$this->SendRaw(sprintf(":%s%s NOTICE %s :Half opped you successfully in %s. Congratulations.", $this->ServiceNum,$this->b64e(1), $Num, $Chan),1);
-			$this->SendRaw(sprintf("%s%s M %s +h %s %s", $this->ServiceNum,$this->b64e(1), $Chan, $Num, $this->Channels[$Chan]["CH-TS"]),1);
-		}
 	}
-	
 	function DelChan($Args) {		
 		$Chan = trim(strtolower($Args[2]));
 		$Num = trim($Args[0]);
@@ -1315,128 +1329,14 @@ EOF;
 		$this->CheckEmptyChan($Chan);
 		@ob_flush();
 	}
-	
-	
 	function SendRaw($Line,$Show) {
 		/* This sends information to the server */
 		echo $Line.PHP_EOL;
 		fwrite($this->Socket,$Line."\r\n");
 	}
-	
 	function CheckEmptyChan($Chan) {
 	return;
 	}
-	
-	function SaveNicks($Args) {
-		/* Somebody changed his nick or a server is telling us his users */
-		/* [get] AP N Q 2 100 TheQBot Q.AliTriX.nl +oiwdk B]AAAB APAAA :The Q Bot
-		   [get] AB N AliTriX 1 1061147585 wer alitrix.homelinux.net +oiwg B]AAAB ABAAG :Ali
-		   [get] ABAAG N test 1061154478 */
-		$Nick = $Args[2];
-		$Oper = false;
-		
-		if (count($Args) == 4) { /* Nick change */
-			$Numeric = substr($Args[0],-9);
-			$Nick = $Args[2];
-			$this->Nicks[$Numeric] = $Nick;
-			if ($this->isIdentified($Numeric)) {
-				return;
-			} else {
-			if ($this->isWrongNick($Numeric, $this->Acct[$Numeric])) {
-				$this->SendRaw(sprintf(":%s%s NOTICE %s :                  ---===[\x02CService Nickname Protection\x02]===---", $this->ServiceNum,$this->b64e(1), $Numeric),1);
-				$this->SendRaw(sprintf(":%s%s NOTICE %s :Your current nickname is registered and protected. If this is your nickname, please", $this->ServiceNum,$this->b64e(1), $Numeric),1);
-				$this->SendRaw(sprintf(":%s%s NOTICE %s :  log in to the appropriate CService account. If you do not change your nick, the", $this->ServiceNum,$this->b64e(1), $Numeric),1);
-				$this->SendRaw(sprintf(":%s%s NOTICE %s :           nickname's owner is entitled to force you off the network.", $this->ServiceNum,$this->b64e(1), $Numeric),1);
-				$this->SendRaw(sprintf(":%s%s NOTICE %s :           To log in, type \x02/msg %s@%s LOGIN \x1fusername password\x1f\x02", $this->ServiceNum,$this->b64e(1), $Numeric, $this->s['BotNick'][1], $this->ServerName),1);
-			} }
-			return 0;
-		}
-		$Modes = $Args[5]; /*
-		if (preg_match("/\+/i",$Modes)) {
-			* Setting the numeric *
-			if (preg_match("/r/",$Args[7]) && preg_match("/f/",$Args[7])) {
-				$Numeric = $Args[11];
-				$this->Acct[$Numeric] = $Args[8];
-				$VHost = $Args[9];
-				$this->vhostIt($Numeric, $this->Acct[$Numeric]);
-			if (strlen($Args[10]) > 8) {
-				$LongestRun = 25 - strlen($Args[10]);
-				if (!($LongestRun = 1)) $IPv6 = str_replace("_", str_repeat($Args[10], $LongestRun), $Args[10]);
-				$this->IPs[$Numeric] = implode(":", str_split($this->convBase($Args[10],"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","0123456789abcdef"),4));
-			} else {
-				$this->IPs[$Numeric] = long2ip($this->convBase($Args[10],"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","0123456789"));
-			}
-			} elseif (preg_match("/f/",$Args[7])) {
-				$VHost = $Args[8];$Numeric = $Args[10];
-			if (strlen($Args[9]) > 8) {
-				$LongestRun = 25 - strlen($Args[10]);
-				if (!($LongestRun = 1)) $IPv6 = str_replace("_", str_repeat($Args[9], $LongestRun), $Args[10]);
-				$this->IPs[$Numeric] = implode(":", str_split($this->convBase($Args[9],"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","0123456789abcdef"),4));
-			} else {
-				$this->IPs[$Numeric] = long2ip($this->convBase($Args[9],"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","0123456789"));
-			}
-			} elseif (preg_match("/r/",$Args[7])) {
-				$Numeric = $Args[10];
-				$this->Acct[$Numeric] = $Args[8];
-				$this->vhostIt($Numeric, $this->Acct[$Numeric]);
-				if (strlen($Args[9]) > 6) {
-					$LongestRun = 25 - strlen($Args[10]);
-					if (!($LongestRun = 1)) $IPv6 = str_replace("_", str_repeat($Args[9], $LongestRun), $Args[10]);
-					$this->IPs[$Numeric] = implode(":", str_split($this->convBase($Args[9],"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","0123456789abcdef"),4));
-				} else {
-					$this->IPs[$Numeric] = long2ip($this->convBase($Args[9],"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","0123456789"));
-				}
-				$this->vhostIt($Numeric, $this->Acct[$Numeric]);
-			} else {
-				$Numeric = $Args[9];
-			if (strlen($Args[8]) > 6) {
-				$LongestRun = 25 - strlen($Args[10]);
-				if (!($LongestRun = 1)) $IPv6 = str_replace("_", str_repeat($Args[8], $LongestRun), $Args[10]);
-				$this->IPs[$Numeric] = implode(":", str_split($this->convBase($Args[8],"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","0123456789abcdef"),4));
-			} else {
-				var_dump($this->convBase($Args[8],"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","0123456789"));
-				$this->IPs[$Numeric] = long2ip($this->convBase($Args[8],"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","0123456789"));
-			}
-			}
-			if (preg_match("/o/",$Args[7])) {
-				$Oper = true;
-			}
-		} else {
-			$Numeric = $Args[8];
-			if (strlen($Args[7]) > 6) {
-				$LongestRun = 25 - strlen($Args[10]);
-				if (!($LongestRun = 1)) $IPv6 = str_replace("_", str_repeat($Args[7], $LongestRun), $Args[10]);
-				$this->IPs[$Numeric] = implode(":", str_split($this->convBase($Args[7],"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","0123456789abcdef"),4));
-			} else {
-				$this->IPs[$Numeric] = inet_ntop($this->convBase($Args[7],"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","0123456789"));
-			}
-			}*/
-		$Numeric = $Args[9];
-		$Host = $Args[6];
-		$this->Hosts[$Numeric] = ($Args[10] == "*") ? $Args[7] : $Args[10];
-		$this->IPs[$Numeric] = ($Args[9] == "0") ? "0.0.0.0" : $Args[9];
-		$this->Acct[$Numeric] = ($Args[11] == "*") ? "" : $Args[11];
-		$this->Nicks[$Numeric] = $Nick;
-		$this->Opers[$Numeric] = $Oper;
-		$this->Ident[$Numeric] = $Args[6];
-		
-		$this->DoCloak($Numeric,TRUE); 
-		
-		if ($this->is_blacklisted_tor($this->IPs[$Numeric]) and !($this->Acct[$Numeric])) {
-			$this->SendRaw(sprintf(":%s%s KILL %s :[\x02CService Network Protection\x02] You use Tor in a manner unacceptable to our network.", $this->ServiceNum, $this->b64e(1), $Numeric),1);
-		} 
-			if ($this->isIdentified($Numeric)) {
-			} else {
-			if ($this->isWrongNick($Numeric, $this->Acct[$Numeric])) {
-$this->SendRaw(sprintf(":%s%s NOTICE %s :                  ---===[\x02CService Nickname Protection\x02]===---", $this->ServiceNum,$this->b64e(1), $Numeric),1);
-$this->SendRaw(sprintf(":%s%s NOTICE %s :Your current nickname is registered and protected. If this is your nickname, please", $this->ServiceNum,$this->b64e(1), $Numeric),1);
-$this->SendRaw(sprintf(":%s%s NOTICE %s :  log in to the appropriate CService account. If you do not change your nick, the", $this->ServiceNum,$this->b64e(1), $Numeric),1);
-$this->SendRaw(sprintf(":%s%s NOTICE %s :           nickname's owner is entitled to force you off the network.", $this->ServiceNum,$this->b64e(1), $Numeric),1);
-$this->SendRaw(sprintf(":%s%s NOTICE %s :           To log in, type \x02/msg %s@%s LOGIN \x1fusername\x1f \x1fpassword\x1f\x02", $this->ServiceNum,$this->b64e(1), $Numeric, $this->s['BotNick'][1], $this->ServerName),1);
-			} else {
-			} }
-	}
-
 	function Num2Nick($Numeric) {
 		/* Changing a numeric into a nick */
 		if (!empty($this->Nicks[$Numeric]))
@@ -1446,7 +1346,6 @@ $this->SendRaw(sprintf(":%s%s NOTICE %s :           To log in, type \x02/msg %s@
 	}
 }
 
-}
 $FishBot = new FishBot();
 $FishBot->LoadChannels();
 $FishBot->StartBot();
